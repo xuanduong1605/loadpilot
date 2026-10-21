@@ -1,0 +1,51 @@
+name: Deploy VPS
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful main-branch CI run ID containing the vps-release artifact
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Validate successful trusted build and download release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$REPO/actions/runs/$RUN_ID" > run.json
+          jq -e --arg repo "$REPO" '.conclusion == "success" and .event == "push" and .head_branch == "main" and .path == ".github/workflows/ci.yml" and .head_repository.full_name == $repo' run.json
+          gh run download "$RUN_ID" --repo "$REPO" --name vps-release --dir release
+          test "$(cat release/COMMIT)" = "$(jq -r .head_sha run.json)"
+      - name: Install deployment SSH identity
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Stage release and deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          tar -C release -czf release.tgz .
+          scp -o StrictHostKeyChecking=yes release.tgz "$VPS_USER@$VPS_HOST:/opt/loadpilot/incoming-$RUN_ID.tgz"
+          ssh -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" "mkdir -p /opt/loadpilot/releases/$RUN_ID && tar -xzf /opt/loadpilot/incoming-$RUN_ID.tgz -C /opt/loadpilot/releases/$RUN_ID && bash /opt/loadpilot/releases/$RUN_ID/scripts/deploy-vps.sh /opt/loadpilot/releases/$RUN_ID"

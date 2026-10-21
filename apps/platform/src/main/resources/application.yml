@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: loadpilot
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/loadpilot}
+    username: ${POSTGRES_USER:loadpilot}
+    password: ${POSTGRES_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+server:
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 24
+    max-http-form-post-size: 64KB
+  error:
+    include-message: never
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+platform:
+  username: ${PLATFORM_USER:admin}
+  password: ${PLATFORM_PASSWORD}

@@ -1,0 +1,26 @@
+.env
+.env.*
+!.env.example
+**/node_modules/
+**/.next/
+**/out/
+**/target/
+.tools/
+secrets/
+backups/
+*.tsbuildinfo
+npm-debug.log*
+**/.preview/
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.toc
+*.xdv
+*.synctex.gz
+
+# Local thesis material and planning documents are not published to GitHub.
+/documents/
+/*.md
+/specs.jpg

@@ -1,0 +1,28 @@
+name: loadpilot-dev
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-loadpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-loadpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["dev-db:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  platform:
+    build: ../../apps/platform
+    env_file: ../../.env
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-loadpilot}
+    depends_on:
+      postgres: {condition: service_healthy}
+  web:
+    build: ../../apps/web
+    ports: ["127.0.0.1:8088:80"]
+    depends_on: [platform]
+volumes:
+  dev-db:
