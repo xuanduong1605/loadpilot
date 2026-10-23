@@ -1,0 +1,59 @@
+.workspace { display: flex; min-height: 100dvh; }
+.sidebar {
+  width: 232px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 18px 24px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+.brandRow { display: flex; align-items: center; justify-content: space-between; }
+.brand { display: inline-flex; align-items: center; color: var(--ink); font-size: 25px; font-weight: 700; letter-spacing: -1.2px; text-decoration: none; }
+.brandMark { display: grid; place-items: center; width: 32px; height: 32px; margin-right: 9px; background: var(--green); color: white; border-radius: 9px; font-size: 26px; }
+.brandDot { color: var(--green); }
+.navigation { display: grid; gap: 6px; margin-top: 46px; }
+.navLabel { margin: 0 14px 12px; color: var(--muted); font-size: 10px; letter-spacing: 1.8px; font-weight: 700; }
+.navLink { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 7px; color: var(--muted); font-size: 13px; text-decoration: none; }
+.navLink:hover { background: var(--canvas); color: var(--ink); }
+.navLink.active { background: var(--green-soft); color: var(--green); font-weight: 700; }
+.sidebarFooter { display: flex; align-items: center; gap: 10px; padding: 22px 8px 0; border-top: 1px solid var(--line); margin-top: auto; }
+.workspaceAvatar { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 9px; font-family: Georgia, serif; }
+.sidebarFooter strong, .sidebarFooter div span { display: block; font-size: 12px; }
+.sidebarFooter div span { color: var(--muted); font-size: 10px; margin-top: 5px; }
+.body { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.topbar { height: 78px; padding: 0 42px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.topbar p { color: var(--muted); font-size: 12px; }
+.topbar p span { margin: 0 12px; color: var(--line-strong); }
+.topbar strong { color: var(--ink); font-weight: 500; }
+.previewBadge { border: 1px solid var(--line-strong); border-radius: 5px; padding: 5px 9px; font-size: 10px; letter-spacing: .3px; color: var(--muted); }
+.content { width: 100%; max-width: 1260px; margin: 0 auto; padding: 42px; flex: 1; }
+.content:focus { outline: none; }
+.footer { display: flex; justify-content: space-between; gap: 20px; padding: 20px 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+.menuButton { display: none; }
+.heading { margin-bottom: 32px; }
+.heading h1 { margin: 10px 0 12px; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(32px, 3vw, 44px); font-weight: 400; letter-spacing: -1.5px; }
+.heading p { max-width: 590px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.8; }
+.eyebrow { color: var(--green); font-size: 10px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; }
+.empty { min-height: 310px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 36px 24px; }
+.emptyIcon { display: grid; place-items: center; width: 52px; height: 52px; background: var(--green-soft); color: var(--green); border-radius: 14px; margin-bottom: 18px; }
+.empty h2 { font-size: 19px; font-weight: 500; margin: 0 0 10px; }
+.empty p { max-width: 390px; font-size: 13px; line-height: 1.8; color: var(--muted); margin: 0 0 22px; }
+.textLink { display: inline-flex; align-items: center; gap: 8px; color: var(--green); font-size: 12px; font-weight: 700; text-underline-offset: 4px; }
+@media (max-width: 1000px) {
+  .sidebar { width: 204px; }
+  .content { padding: 30px; }
+  .topbar, .footer { padding-left: 30px; padding-right: 30px; }
+}
+@media (max-width: 720px) {
+  .workspace { flex-direction: column; }
+  .sidebar { width: 100%; padding: 18px 22px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .menuButton { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); cursor: pointer; }
+  .navigation { display: none; margin-top: 24px; }
+  .navigation.open { display: grid; }
+  .sidebarFooter { display: none; }
+  .topbar { height: 60px; padding: 0 22px; }
+  .content { padding: 28px 22px; }
+  .footer { padding: 20px 22px; flex-wrap: wrap; }
+  .heading { margin-bottom: 26px; }
+}

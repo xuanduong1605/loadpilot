@@ -3,7 +3,7 @@ import './styles.css';
 
 export const metadata: Metadata = {
   title: 'Loadpilot | Performance laboratory',
-  description: 'Project foundation for an adaptive performance testing platform.',
+  description: 'Plan load tests, understand capacity and compare resource configurations with Loadpilot.',
 };
 export default function RootLayout({children}: Readonly<{children: React.ReactNode}>) {
   return <html lang="en"><body>{children}</body></html>;
