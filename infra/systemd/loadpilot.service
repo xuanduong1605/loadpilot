@@ -1,0 +1,31 @@
+[Unit]
+Description=Loadpilot platform
+Wants=network-online.target
+After=network-online.target postgresql.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=loadpilot
+Group=loadpilot
+WorkingDirectory=/opt/loadpilot/current
+EnvironmentFile=/etc/loadpilot/platform.env
+Environment=SERVER_ADDRESS=127.0.0.1
+ExecStart=/usr/bin/java -Xms128m -Xmx384m -XX:+ExitOnOutOfMemoryError -jar /opt/loadpilot/current/platform.jar
+Restart=on-failure
+RestartSec=5
+SuccessExitStatus=143
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+MemoryAccounting=true
+MemoryHigh=512M
+MemoryMax=640M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

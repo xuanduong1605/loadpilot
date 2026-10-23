@@ -1,0 +1,3 @@
+# Install with visudo as /etc/sudoers.d/loadpilot-deploy (root:root, 0440).
+# Replace deploy if you selected a different unprivileged deployment user.
+deploy ALL=(root) NOPASSWD: /usr/bin/systemctl start loadpilot.service, /usr/bin/systemctl stop loadpilot.service

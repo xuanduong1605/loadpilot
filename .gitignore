@@ -6,6 +6,7 @@
 **/out/
 **/target/
 .tools/
+/bundle/
 secrets/
 backups/
 *.tsbuildinfo
@@ -20,7 +21,14 @@ npm-debug.log*
 *.xdv
 *.synctex.gz
 
-# Local thesis material and planning documents are not published to GitHub.
+# Local harness and thesis documentation are not published to GitHub.
 /documents/
+/docs/
 /*.md
+!/README.md
 /specs.jpg
+/feature_list.json
+/check-harness.cjs
+/init.ps1
+/init.sh
+/k8s-performance-harness/
