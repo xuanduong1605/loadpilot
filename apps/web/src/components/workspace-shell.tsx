@@ -50,7 +50,10 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
       <div className={styles.body}>
         <header className={styles.topbar}>
           <p>Workspace <span>/</span> <strong>{current?.label ?? 'Overview'}</strong></p>
-          <span className={styles.previewBadge}>UI preview</span>
+          <div className={styles.topbarActions}>
+            <span className={styles.previewBadge}>UI preview</span>
+            <Link className={styles.loginLink} href="/login/">Sign-in preview <Icon name="arrow" width={14} height={14} /></Link>
+          </div>
         </header>
         <main id="main-content" className={styles.content} tabIndex={-1}>{children}</main>
         <footer className={styles.footer}><span>Loadpilot · Performance laboratory</span><span>Measure. Learn. Refine.</span></footer>

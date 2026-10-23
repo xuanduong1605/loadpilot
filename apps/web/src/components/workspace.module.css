@@ -27,6 +27,8 @@
 .topbar p span { margin: 0 12px; color: var(--line-strong); }
 .topbar strong { color: var(--ink); font-weight: 500; }
 .previewBadge { border: 1px solid var(--line-strong); border-radius: 5px; padding: 5px 9px; font-size: 10px; letter-spacing: .3px; color: var(--muted); }
+.topbarActions { display: flex; align-items: center; gap: 20px; }
+.loginLink { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 11px; text-underline-offset: 4px; }
 .content { width: 100%; max-width: 1260px; margin: 0 auto; padding: 42px; flex: 1; }
 .content:focus { outline: none; }
 .footer { display: flex; justify-content: space-between; gap: 20px; padding: 20px 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
@@ -56,4 +58,6 @@
   .content { padding: 28px 22px; }
   .footer { padding: 20px 22px; flex-wrap: wrap; }
   .heading { margin-bottom: 26px; }
+  .topbarActions { gap: 12px; }
+  .previewBadge { display: none; }
 }
