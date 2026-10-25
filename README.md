@@ -10,88 +10,34 @@
 
 ## Overview
 
-Loadpilot is a web platform being developed to help engineers answer two questions: **How much load can this application handle?** and **Which CPU and replica configuration meets its performance goals?**
+Loadpilot is a thesis project exploring **adaptive load testing**, **Kubernetes resource optimization**, and **AI-assisted performance analysis**.
 
-The intended workflow brings scenario authoring, load testing, resource comparisons, and result analysis into one workspace. Engineers define performance goals, review a k6 script, and run controlled experiments against an authorized Kubernetes workload. Loadpilot will use the collected evidence to estimate capacity and recommend the best configuration it has tested within the chosen budget.
+The project centers on two questions: **How much load can an application handle while meeting its performance goals?** and **Which CPU and replica configuration meets those goals with fewer allocated resources?**
 
-**Status: early development.** The repository currently contains the frontend workspace and sign-in preview, plus the backend foundation. Browser authentication and experiment execution are still planned.
+It approaches these questions through controlled experiments, reproducible measurements, and comparisons under the same required load. The emphasis is on evidence that engineers can inspect and explain when assessing application capacity and resource tradeoffs.
 
-## Features
+## Research focus
 
-| Area | Capability | Status |
-| --- | --- | --- |
-| Workspace | Navigation and previews for targets, scenarios, experiments, comparisons, and settings | Implemented |
-| Sign-in | Login interface with shared form controls | Preview; no authentication or session |
-| Backend foundation | Health endpoint, protected status API, and database migration baseline | Implemented foundation |
-| Target management | Register applications and diagnose Kubernetes and monitoring connections | Planned |
-| Scenario authoring | Create, version, validate, and approve manual or AI-drafted k6 scripts | Planned |
-| Adaptive testing | Adjust load within defined bounds to find an observed capacity interval | Planned |
-| Resource optimization | Compare CPU and replica configurations at the same required load | Planned |
-| AI assistance | Draft scenarios and explain results using recorded evidence | Planned |
-| Reporting | Experiment history, comparisons, and reproducible exports | Planned |
-| Distributed execution | Coordinate multiple load generators and aggregate valid evidence | Planned |
+| Theme | Focus |
+| --- | --- |
+| Adaptive load testing | Finding an observed capacity interval through bounded load adjustments |
+| Resource optimization | Comparing CPU and replica configurations against latency, throughput, and error goals |
+| Scenario authoring | Expressing performance goals through reviewed k6 test scenarios |
+| Performance evidence | Connecting measurements to their workload, configuration, and observation window |
+| AI assistance | Exploring scenario drafting and explanations grounded in experiment evidence |
 
-## Intended workflow
+## Experiment principles
 
-1. **Define the target:** select an authorized application and its Kubernetes workload.
-2. **Set the goals:** choose load bounds, latency/error thresholds, resource limits, and an experiment budget.
-3. **Review the scenario:** write or generate a k6 script, validate it, and approve its exact content.
-4. **Measure capacity:** run bounded tests and evaluate whether the available evidence meets the goals.
-5. **Compare configurations:** test CPU and replica candidates under the same required load.
-6. **Review the results:** inspect measurements, recommendations, and AI explanations; verify restoration of the original workload settings.
+Reproducibility and workload recovery are central to the project. Experiments have explicit scope and resource budgets; configuration comparisons use the same required load. Missing or invalid measurements mean **Insufficient data**.
 
-These steps describe the planned product experience; the current interface provides previews.
+The optimization scope covers one Kubernetes Deployment/container's CPU and replicas, with memory fixed. Recommendations concern tested configurations, with restoration of the original controlled settings as a core requirement.
 
-## Architecture
-
-The platform is designed around one web frontend and one modular backend. The backend will coordinate experiments, preserve their evidence, and connect to a separate Kubernetes laboratory.
-
-```mermaid
-flowchart LR
-    Engineer[Engineer] --> Web[Web workspace]
-    Web --> API[Platform backend]
-    API --> DB[(PostgreSQL)]
-    API -. Planned .-> Lab[Kubernetes workloads and k6 generators]
-    API -. Planned .-> Metrics[Prometheus and Grafana]
-    API -. Planned .-> AI[External AI provider]
-```
-
-The frontend, backend foundation, and database baseline exist today. Experiment orchestration, measurements, optimization, and AI integrations are planned backend capabilities.
+AI has an advisory role in scenario authoring and analysis. Deterministic rules govern performance verdicts and execution bounds.
 
 ## Technology
 
 | Layer | Technology |
 | --- | --- |
-| Frontend | Next.js 16, React 19, TypeScript |
-| Backend | Java 21, Spring Boot 3.5, Spring Security |
-| Persistence | PostgreSQL 16, Flyway |
-| Hosting | Nginx, systemd, static frontend and Java application |
-| Planned load execution | Grafana k6, Kubernetes Java Client |
-| Planned observability | Prometheus, Grafana, Micrometer; OpenTelemetry where target instrumentation is available |
-| Planned AI integration | Spring AI with an external provider |
-
-## Experiment principles
-
-- **Evidence first:** missing, stale, or invalid required measurements produce **Insufficient data**.
-- **Comparable results:** resource candidates must meet performance goals at the same required load.
-- **Bounded execution:** experiments use approved scripts, explicit limits, and finite budgets.
-- **Workload recovery:** original controlled CPU and replica settings must be restored after experiments.
-- **Advisory AI:** AI proposes scripts and explains evidence; deterministic rules govern verdicts and execution.
-
-The initial optimization scope covers one Deployment/container's CPU and replicas, with memory fixed. Recommendations describe tested candidates and do not permanently promote a configuration.
-
-## Project structure
-
-```text
-apps/web/       Web workspace and UI components
-apps/platform/  Backend foundation and database migrations
-infra/          Native hosting configuration
-scripts/        Deployment tooling
-.github/        Build and deployment workflow
-```
-
-## Roadmap
-
-The next milestones are to verify the frontend and backend foundation, connect real authentication, and implement target management and scenario approval. Later milestones add bounded execution and recovery, reliable measurements, adaptive capacity testing, resource optimization, AI assistance, reporting, and distributed generators.
-
-A separate six-service example application and thesis evaluation follow platform acceptance.
+| Frontend | Next.js, React, TypeScript |
+| Backend | Java, Spring Boot, Spring Security |
+| Persistence | PostgreSQL, Flyway |
