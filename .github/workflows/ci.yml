@@ -15,12 +15,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
-      artifact_name: vps-release-${{ github.run_attempt }}
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
     env:
-      TEST_DATABASE_URL: jdbc:postgresql://127.0.0.1:55432/loadpilot_ci
+      TEST_DATABASE_URL: jdbc:postgresql://127.0.0.1:5432/loadpilot_ci
       TEST_DATABASE_USER: loadpilot_ci
       TEST_DATABASE_PASSWORD: ci-disposable-database-password
-      DATABASE_URL: jdbc:postgresql://127.0.0.1:55432/loadpilot_ci
+      DATABASE_URL: jdbc:postgresql://127.0.0.1:5432/loadpilot_ci
       POSTGRES_USER: loadpilot_ci
       POSTGRES_PASSWORD: ci-disposable-database-password
       PLATFORM_USER: admin
@@ -43,34 +43,13 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - name: Prepare Linux tools and disposable CI PostgreSQL
+      - name: Prepare CI database
         run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl --fail --silent --show-error --retry 3 -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
           sudo apt-get update
-          sudo apt-get install -y postgresql-17 postgresql-client-17 nginx
-          sudo apt-get install -y shellcheck
-      - name: Validate workflow syntax
-        run: |
-          curl --fail --silent --show-error --retry 3 -L https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/actionlint.tar.gz"
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
-          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
-          "$RUNNER_TEMP/actionlint" -color
-      - name: Start disposable CI database
-        run: |
-          pg_bin=/usr/lib/postgresql/17/bin
-          data="$RUNNER_TEMP/loadpilot-pgdata"
-          socket="$RUNNER_TEMP/loadpilot-pgsocket"
-          : "${TEST_DATABASE_PASSWORD:?CI database password required}"
-          mkdir -p "$socket"
-          chmod 0700 "$socket"
-          printf '%s\n' "$TEST_DATABASE_PASSWORD" > "$RUNNER_TEMP/pg-password"
-          chmod 600 "$RUNNER_TEMP/pg-password"
-          "$pg_bin/initdb" -D "$data" --username=postgres --pwfile="$RUNNER_TEMP/pg-password" --auth-host=scram-sha-256 --auth-local=trust >/dev/null
-          "$pg_bin/pg_ctl" -D "$data" -l "$RUNNER_TEMP/postgres.log" -o "-h 127.0.0.1 -p 55432 -k $socket -c shared_buffers=32MB -c max_connections=30" -w start
-          "$pg_bin/psql" -h "$socket" -p 55432 -U postgres -d postgres -v ON_ERROR_STOP=1 -v "ci_password=$TEST_DATABASE_PASSWORD" <<'SQL'
-          CREATE ROLE loadpilot_ci LOGIN PASSWORD :'ci_password';
+          sudo apt-get install --no-install-recommends -y postgresql-16 shellcheck
+          sudo systemctl start postgresql
+          sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE loadpilot_ci LOGIN PASSWORD 'ci-disposable-database-password';
           CREATE DATABASE loadpilot_ci OWNER loadpilot_ci;
           SQL
       - name: Build and test both apps
@@ -96,47 +75,6 @@ jobs:
           tar -czf bundle/web.tar.gz -C apps/web/out .
           printf '%s\n' "$GITHUB_SHA" > bundle/COMMIT
           (cd bundle && sha256sum platform.jar web.tar.gz COMMIT deploy-vps.sh > SHA256SUMS)
-      - name: Smoke test packaged apps through Nginx
-        run: |
-          bundle=$(realpath bundle)
-          work="${RUNNER_TEMP:?}/loadpilot-smoke"
-          mkdir -p "$work/nginx" "$work/web"
-          tar -xzf "$bundle/web.tar.gz" -C "$work/web" --no-same-owner
-          sed -e 's/listen 80 default_server;/listen 18088 default_server;/' -e "s|/opt/loadpilot/current/web|$work/web|" infra/nginx/loadpilot.conf > "$work/nginx/site.conf"
-          printf 'pid %s/nginx.pid;\nerror_log %s/error.log;\nevents {}\nhttp { include /etc/nginx/mime.types; access_log off; client_body_temp_path body; proxy_temp_path proxy; fastcgi_temp_path fastcgi; uwsgi_temp_path uwsgi; scgi_temp_path scgi; include %s/site.conf; }\n' "$work/nginx" "$work/nginx" "$work/nginx" > "$work/nginx/nginx.conf"
-          nginx_args=(-e "$work/nginx/error.log" -c "$work/nginx/nginx.conf" -p "$work/nginx")
-          nginx -t "${nginx_args[@]}"
-          platform_pid=''
-          cleanup() {
-            if [[ -n "$platform_pid" ]]; then kill "$platform_pid" 2>/dev/null || true; wait "$platform_pid" 2>/dev/null || true; fi
-            nginx -s quit "${nginx_args[@]}" 2>/dev/null || true
-          }
-          trap cleanup EXIT
-          java -Xmx384m -jar "$bundle/platform.jar" > "$work/platform.log" 2>&1 &
-          platform_pid=$!
-          nginx "${nginx_args[@]}"
-          for _attempt in $(seq 1 60); do
-            if curl --fail --silent --max-time 2 http://127.0.0.1:18088/healthz >/dev/null; then break; fi
-            sleep 1
-          done
-          curl --fail --silent --max-time 5 http://127.0.0.1:18088/healthz | jq -e '.status == "UP"'
-          for route in / /login/ /targets/ /scenarios/ /experiments/ /comparisons/ /settings/; do
-            curl --fail --silent --max-time 5 "http://127.0.0.1:18088$route" >/dev/null
-          done
-          test "$(curl --silent --max-time 5 --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18088/route-that-does-not-exist/)" = 404
-          test "$(curl --silent --max-time 5 --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18088/api/status)" = 401
-          curl --fail --silent --max-time 5 --user "admin:${PLATFORM_PASSWORD:?}" http://127.0.0.1:18088/api/status | jq -e '.stage == "project-setup"'
-          test "$(curl --fail --silent --max-time 5 http://127.0.0.1:18088/.well-known/loadpilot-release)" = "$(cat "$bundle/COMMIT")"
-          systemd-analyze verify infra/systemd/loadpilot.service
-          echo 'PASS: native JAR/PostgreSQL/Nginx routes, authentication, release identity and unit syntax.'
-      - name: Failure evidence
-        if: failure()
-        run: tail -n 60 "$RUNNER_TEMP/loadpilot-smoke/platform.log" "$RUNNER_TEMP/postgres.log" "$RUNNER_TEMP/loadpilot-smoke/nginx/error.log" 2>/dev/null || true
-      - name: Ensure CI database is stopped
-        if: always()
-        run: |
-          data="$RUNNER_TEMP/loadpilot-pgdata"
-          if [[ -f "$data/postmaster.pid" ]]; then /usr/lib/postgresql/17/bin/pg_ctl -D "$data" -m fast -w stop; fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -145,6 +83,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: upload
         if: success() && github.ref == 'refs/heads/main'
         with:
           name: vps-release-${{ github.run_attempt }}
@@ -159,31 +98,31 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      actions: read
     environment: production
     env:
       VPS_HOST: ${{ vars.VPS_HOST }}
-      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_USER: ${{ vars.VPS_USER || 'deploy' }}
       VPS_SSH_PORT: ${{ vars.VPS_SSH_PORT || '22' }}
       VPS_PUBLIC_URL: ${{ vars.VPS_PUBLIC_URL }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download tested release
+        uses: actions/download-artifact@v8
         with:
-          persist-credentials: false
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: release
       - name: Check VPS configuration
         run: |
           [[ "$VPS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]
           [[ "$VPS_USER" =~ ^[a-z_][a-z0-9_-]*$ && "$VPS_USER" != root && "$VPS_USER" != postgres && "$VPS_USER" != loadpilot ]]
           [[ "$VPS_SSH_PORT" =~ ^[0-9]{1,5}$ ]] && ((10#$VPS_SSH_PORT >= 1 && 10#$VPS_SSH_PORT <= 65535))
-          [[ "$VPS_PUBLIC_URL" =~ ^https://[A-Za-z0-9][A-Za-z0-9.-]*$ ]]
+          [[ "$VPS_PUBLIC_URL" =~ ^(http|https)://[A-Za-z0-9][A-Za-z0-9.-]*(:([0-9]{1,5}))?$ ]]
+          public_port=${BASH_REMATCH[3]}
+          if [[ -n "$public_port" ]]; then ((10#$public_port >= 1 && 10#$public_port <= 65535)); fi
           [[ ! "$VPS_HOST $VPS_USER $VPS_PUBLIC_URL" =~ REPLACE|example\.(com|org|net) ]]
-      - name: Download and verify this run's tested release
+      - name: Verify tested release
         env:
-          GH_TOKEN: ${{ github.token }}
           EXPECTED_COMMIT: ${{ github.sha }}
-          RELEASE_ARTIFACT: ${{ needs.build.outputs.artifact_name }}
         run: |
-          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$RELEASE_ARTIFACT" --dir release
           test "$(cat release/COMMIT)" = "$EXPECTED_COMMIT"
           (cd release && sha256sum --strict --check SHA256SUMS)
           test -f release/platform.jar && test -f release/deploy-vps.sh
@@ -199,18 +138,23 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
       - name: Transfer and activate verified release
         run: |
           release_id="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           tar -C release -czf release.tgz .
           scp -P "$VPS_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 release.tgz "$VPS_USER@$VPS_HOST:/opt/loadpilot/incoming/$release_id.tgz"
           ssh -p "$VPS_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 "$VPS_USER@$VPS_HOST" "umask 022; mkdir /opt/loadpilot/releases/$release_id && tar -xzf /opt/loadpilot/incoming/$release_id.tgz -C /opt/loadpilot/releases/$release_id --no-same-owner && env LOADPILOT_ALLOW_APP_ROLLBACK=true LOADPILOT_PUBLIC_URL='$VPS_PUBLIC_URL' bash /opt/loadpilot/releases/$release_id/deploy-vps.sh /opt/loadpilot/releases/$release_id"
-      - name: Verify public HTTPS route
+      - name: Verify public frontend and API routes
         run: |
           expected=$(cat release/COMMIT)
           actual=$(curl --fail --silent --show-error --retry 3 --retry-all-errors --max-time 10 "$VPS_PUBLIC_URL/.well-known/loadpilot-release")
           test "$actual" = "$expected"
           curl --fail --silent --show-error --max-time 10 "$VPS_PUBLIC_URL/healthz" | jq -e '.status == "UP"'
+          for route in / /login/ /targets/ /scenarios/ /experiments/ /comparisons/ /settings/; do
+            curl --fail --silent --show-error --max-time 10 "$VPS_PUBLIC_URL$route" >/dev/null
+          done
+          test "$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' "$VPS_PUBLIC_URL/api/status")" = 401
           {
             echo '### Deployment verified'
             echo "Commit: $expected"

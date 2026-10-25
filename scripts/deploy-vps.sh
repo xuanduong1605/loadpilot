@@ -6,9 +6,18 @@ root=/opt/loadpilot
 release=$(realpath -e "${1:?Usage: deploy-vps.sh /opt/loadpilot/releases/RELEASE_ID}")
 [[ "$release" =~ ^"$root"/releases/[0-9]+(-[0-9]+)*$ ]] || { echo 'Unexpected release path' >&2; exit 1; }
 [[ ${LOADPILOT_ALLOW_APP_ROLLBACK:-false} == true ]] || { echo 'Review migration compatibility and explicitly allow application rollback.' >&2; exit 1; }
-public_url=${LOADPILOT_PUBLIC_URL:?Set the configured HTTPS origin}
-health_host=${public_url#https://}
-[[ "$public_url" == "https://$health_host" && "$health_host" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || { echo 'Expected an HTTPS hostname origin without path/port' >&2; exit 1; }
+public_url=${LOADPILOT_PUBLIC_URL:?Set the configured HTTP or HTTPS origin}
+[[ "$public_url" =~ ^(http|https)://([A-Za-z0-9][A-Za-z0-9.-]*)(:([0-9]{1,5}))?$ ]] || { echo 'Expected http(s)://host[:port] without path or trailing slash' >&2; exit 1; }
+health_scheme=${BASH_REMATCH[1]}
+health_host=${BASH_REMATCH[2]}
+health_port=${BASH_REMATCH[4]}
+if [[ -z "$health_port" ]]; then
+  health_port=80
+  if [[ "$health_scheme" == https ]]; then health_port=443; fi
+fi
+((10#$health_port >= 1 && 10#$health_port <= 65535)) || { echo 'Invalid public HTTP(S) port' >&2; exit 1; }
+# Preserve Host and HTTPS certificate/SNI checks while connecting locally.
+local_route=(--noproxy '*' --connect-to "$health_host:$health_port:127.0.0.1:$health_port")
 attempts=${LOADPILOT_HEALTH_ATTEMPTS:-30}
 interval=${LOADPILOT_HEALTH_INTERVAL:-2}
 [[ "$attempts" =~ ^[0-9]+$ && "$interval" =~ ^[0-9]+$ ]] && ((attempts >= 1 && attempts <= 60 && interval <= 10)) || exit 1
@@ -37,8 +46,9 @@ healthy() {
   for ((attempt=1; attempt<=attempts; attempt++)); do
     if systemctl is-active --quiet loadpilot.service \
       && curl --fail --silent --max-time 3 http://127.0.0.1:8080/actuator/health | jq -e '.status == "UP"' >/dev/null \
-      && [[ $(curl --fail --silent --max-time 5 --resolve "$health_host:443:127.0.0.1" "$public_url/.well-known/loadpilot-release") == "$expected" ]] \
-      && [[ $(curl --silent --max-time 5 --output /dev/null --write-out '%{http_code}' --resolve "$health_host:443:127.0.0.1" "$public_url/api/status") == 401 ]]; then
+      && [[ $(curl --fail --silent --max-time 5 "${local_route[@]}" "$public_url/.well-known/loadpilot-release") == "$expected" ]] \
+      && curl --fail --silent --max-time 5 "${local_route[@]}" "$public_url/login/" >/dev/null \
+      && [[ $(curl --silent --max-time 5 --output /dev/null --write-out '%{http_code}' "${local_route[@]}" "$public_url/api/status") == 401 ]]; then
       return 0
     fi
     sleep "$interval"
