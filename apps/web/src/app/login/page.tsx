@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Icon } from '../../components/icon';
-import { LoginPreview } from '../../features/access/login-preview';
+import { LoginForm } from '../../features/access/login-form';
 import styles from '../../features/access/login.module.css';
 
 export const metadata: Metadata = { title: 'Sign in preview | Loadpilot' };
@@ -25,7 +25,7 @@ export default function LoginPage() {
         <span className={styles.storyFooter}>Loadpilot · Performance laboratory</span>
       </aside>
       <main id="login-content" className={styles.formSide} tabIndex={-1}>
-        <div className={styles.formContainer}><LoginPreview /></div>
+        <div className={styles.formContainer}><LoginForm /></div>
       </main>
     </div>
   );
