@@ -36,7 +36,7 @@ export function TargetList() {
         <p>{offset ? 'Return to the previous page or register another system.' : 'Add an API and its Kubernetes workload. Each system keeps its own connection and monitoring details.'}</p></section>
         : <div className={styles.cards}>{page.items.map(target => <article className={styles.panel} key={target.id}>
           <h2><Link href={`/targets/detail/?id=${target.id}`}>{target.name}</Link></h2>
-          <span className={styles.badge}>{target.archivedAt ? 'Archived' : 'Connection not checked'}</span>
+          <span className={styles.badge}>{target.archivedAt ? 'Archived' : 'Open to inspect live status'}</span>
           <dl className={styles.details}><dt>Environment</dt><dd>{target.environment}</dd><dt>API</dt><dd>{target.baseUrl}</dd>
             <dt>Workload</dt><dd>{target.namespace} / {target.deployment}</dd><dt>Container</dt><dd>{target.container}</dd></dl>
         </article>)}</div>}

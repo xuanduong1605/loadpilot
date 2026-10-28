@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Notice } from '../../components/form-controls';
 import { api, mutate } from '../../lib/api';
 import { TargetForm } from './target-form';
+import { ConnectionPanel } from './connection-panel';
 import type { Target } from './types';
 import styles from './targets.module.css';
 
@@ -53,6 +54,7 @@ export function TargetDetail() {
         {!target.archivedAt && <div className={styles.actions}><Button onClick={() => setEditing(true)}>Edit system</Button><Button onClick={() => setConfirmArchive(true)}>Archive system</Button></div>}
         {target.archivedAt && <p className={styles.hint}>This system is archived. Its identity and history are retained.</p>}
       </section>}
+      {!editing && !target.archivedAt && <ConnectionPanel key={`${target.id}:${target.revision}`} target={target} onSaved={() => void load()} />}
       {confirmArchive && <section className={styles.panel} aria-label="Confirm archive"><h2>Archive this system?</h2><p>It will be hidden from the active list. Its identity and history will be retained.</p>
         <div className={styles.actions}><Button busy={pending} onClick={() => void archive()}>Confirm archive</Button><Button disabled={pending} onClick={() => setConfirmArchive(false)}>Cancel</Button></div></section>}
     </>}

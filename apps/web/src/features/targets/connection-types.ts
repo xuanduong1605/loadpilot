@@ -1,0 +1,11 @@
+export type ConnectionView = { revision: number; kubernetesUrl: string; kubernetesCa: string; hasKubernetesToken: boolean;
+  prometheusUrl: string; prometheusCa: string; hasPrometheusToken: boolean; updatedAt: string | null };
+export type ConnectionPolicy = { encryptionAvailable: boolean; allowedOrigins: string[] };
+export type Check = { state: string; message: string; checkedAt: string; source: string; httpStatus: number | null };
+export type Usage = { state: string; timestamp: string | null; window: string | null; cpuMillicores: number | null; memoryBytes: number | null };
+export type Inspection = { targetId: string; targetRevision: number; connectionRevision: number; collectedAt: string;
+  api: Check; kubernetes: Check; metrics: Check; prometheus: Check;
+  workload: { uid: string; generation: number | null; observedGeneration: number | null; desiredReplicas: number | null;
+    readyReplicas: number | null; availableReplicas: number | null; updatedReplicas: number | null } | null;
+  pods: { name: string; phase: string | null; ready: boolean | null; restarts: number | null; cpuRequestMillicores: number | null;
+    cpuLimitMillicores: number | null; memoryRequestBytes: number | null; memoryLimitBytes: number | null; usage: Usage }[] };

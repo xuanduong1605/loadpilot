@@ -1,11 +1,18 @@
 import type { Metadata } from 'next';
-import { WorkspaceSection } from '../../../components/workspace-section';
+import Link from 'next/link';
+import { Icon } from '../../../components/icon';
+import styles from '../../../components/workspace.module.css';
 
 export const metadata: Metadata = { title: 'Settings | Loadpilot' };
 
 export default function SettingsPage() {
-  return <WorkspaceSection title="Settings" description="Bring your laboratory connections together."
-    icon="settings" heading="Your laboratory, connected">
-    Connection settings are not available yet. Kubernetes and monitoring connections will be configured and checked here.
-  </WorkspaceSection>;
+  return <>
+    <div className={styles.heading}><span className={styles.eyebrow}>Workspace / Settings</span><h1>Settings</h1><p>Manage connections for each registered system.</p></div>
+    <section className={styles.empty} aria-labelledby="connection-settings-title">
+      <span className={styles.emptyIcon}><Icon name="settings" width={24} height={24} /></span>
+      <h2 id="connection-settings-title">System connection settings</h2>
+      <p>Open a system to configure its Kubernetes endpoint, read-only credentials and optional monitoring connection.</p>
+      <Link className={styles.textLink} href="/targets/">Manage system connections <Icon name="arrow" width={16} height={16} /></Link>
+    </section>
+  </>;
 }

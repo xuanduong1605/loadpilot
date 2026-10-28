@@ -29,5 +29,24 @@
 .pagination { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-top: 24px; font-size: 12px; color: var(--muted); }
 .panel + .panel { margin-top: 22px; }
 .cards .panel + .panel { margin-top: 0; }
+.form textarea { display: block; box-sizing: border-box; width: 100%; resize: vertical; border: 1px solid var(--line-strong); border-radius: 6px; padding: 12px; margin-top: 8px; background: var(--surface); color: var(--ink); font: 12px/1.6 ui-monospace, monospace; }
+.confirm { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; margin-top: 22px; }
+.checks article { background: var(--canvas); border: 1px solid var(--line); padding: 16px; border-radius: 6px; }
+.checks h3 { font-size: 12px; font-weight: 500; margin: 0 0 10px; }
+.checks h3 span { display: block; width: fit-content; margin-top: 8px; color: var(--muted); font-size: 11px; }
+.checks article[data-tone='success'] h3 span { color: #15803D; }
+.checks article[data-tone='warning'] h3 span { color: #92400E; }
+.checks article[data-tone='error'] h3 span { color: #B91C1C; }
+.checks p, .checks small { font-size: 11px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
+.checks p { margin: 0 0 12px; }
+.tableWrap { overflow-x: auto; margin-top: 24px; border: 1px solid var(--line); border-radius: 6px; }
+.tableWrap:focus-visible { outline-offset: 2px; }
+.table { border-collapse: collapse; width: 100%; font-size: 11px; line-height: 1.7; font-variant-numeric: tabular-nums; }
+.table caption { text-align: left; padding: 12px; color: var(--muted); }
+.table thead { background: var(--canvas); }
+.table th, .table td { text-align: left; vertical-align: top; padding: 12px; border-top: 1px solid var(--line); }
+.table th { font-weight: 500; }
+.table small { display: block; color: var(--muted); font-weight: 400; }
 @media(max-width: 1100px) { .metadata .details { grid-template-columns: 100px minmax(0, 1fr); } }
 @media(max-width: 600px) { .heading { flex-direction: column; align-items: flex-start; } .heading h1 { font-size: 26px; } .fields { grid-template-columns: 1fr; } .details, .metadata .details { grid-template-columns: 90px minmax(0, 1fr); } .panel { padding: 18px; } }
