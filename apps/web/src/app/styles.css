@@ -13,10 +13,10 @@
   --warning: #92400E;
   --danger: #B91C1C;
   --shadow: 0 1px 2px rgb(15 23 42 / 4%);
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-pill: 5px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
 }
 @font-face { font-family: Inter; src: url('/fonts/InterVariable.woff2') format('woff2'); font-style: normal; font-weight: 100 900; font-display: swap; }
 * { box-sizing: border-box; }
