@@ -63,6 +63,10 @@ public class TargetStore {
     public Target update(UUID id, TargetInput input, String actor) {
         validate(input);
         if (input.revision() == null) throw TargetProblem.invalid("revision");
+        Target previous = get(id);
+        if (id.toString().equals(previous.credentialRef()) && (!java.util.Objects.equals(reference(input.credentialRef()), previous.credentialRef())
+                || !java.util.Objects.equals(reference(input.monitoringRef()), previous.monitoringRef())))
+            throw TargetProblem.invalid("connection references (use connection settings)");
         int updated = database.update("UPDATE registered_target SET name=?,base_url=?,environment=?,namespace=?,deployment=?,container=?,credential_ref=?,monitoring_ref=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND revision=? AND archived_at IS NULL",
                 input.name().trim(), input.baseUrl(), input.environment(), input.namespace(), input.deployment(), input.container(),
                 reference(input.credentialRef()), reference(input.monitoringRef()), id, input.revision());
@@ -82,4 +86,9 @@ public class TargetStore {
         return get(id);
     }
 
+    @Transactional
+    public void bindConnection(UUID id, long revision, boolean monitoring) {
+        if (database.update("UPDATE registered_target SET credential_ref=?,monitoring_ref=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND revision=? AND archived_at IS NULL",
+                id.toString(), monitoring ? id.toString() : null, id, revision) == 0) throw TargetProblem.conflict();
+    }
 }

@@ -36,3 +36,7 @@ management:
 platform:
   username: ${PLATFORM_USER:admin}
   password: ${PLATFORM_PASSWORD}
+  connections:
+    master-key: ${CONNECTION_MASTER_KEY:}
+    allowed-origins: ${CONNECTION_ALLOWED_ORIGINS:}
+    allowed-addresses: ${CONNECTION_ALLOWED_ADDRESSES:}
