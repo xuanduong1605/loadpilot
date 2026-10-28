@@ -6,6 +6,7 @@
 **/out/
 **/target/
 .tools/
+.playwright-mcp/
 /bundle/
 secrets/
 backups/

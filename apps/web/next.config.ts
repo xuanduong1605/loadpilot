@@ -2,6 +2,8 @@ import type { NextConfig } from 'next';
 
 const development = process.env.NODE_ENV === 'development';
 const config: NextConfig = {
+  // Workspace instructions are maintained at the monorepo root.
+  agentRules: false,
   output: development ? undefined : 'export',
   trailingSlash: true,
   poweredByHeader: false,
