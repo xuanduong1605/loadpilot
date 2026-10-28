@@ -1,0 +1,42 @@
+# Template only: replace namespace and Deployment name before operator review.
+# No token or cluster-admin permissions. Do not apply automatically.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: loadpilot-reader
+  namespace: replace-namespace
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: loadpilot-inspection
+  namespace: replace-namespace
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    resourceNames: [replace-deployment]
+    verbs: [get]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [list]
+  - apiGroups: ['']
+    resources: [pods]
+    verbs: [list]
+  - apiGroups: [metrics.k8s.io]
+    resources: [pods]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: loadpilot-inspection
+  namespace: replace-namespace
+subjects:
+  - kind: ServiceAccount
+    name: loadpilot-reader
+    namespace: replace-namespace
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: loadpilot-inspection

@@ -81,6 +81,14 @@ class ConnectionIntegrationTest {
         bodyLimit.getFilter().doFilter(chunked,new org.springframework.mock.web.MockHttpServletResponse(),(request,response)->
                 org.assertj.core.api.Assertions.assertThatThrownBy(()->request.getInputStream().readAllBytes()).isInstanceOf(java.io.IOException.class));
     }
+    @Test void unreadableCredentialReportsUnavailableWithoutPretendingTheProfileChanged() throws Exception {
+        var target=create();String base="/api/integrations/targets/"+target.id();
+        mvc.perform(put(base+"/connection").with(csrf()).contentType("application/json").content(input(0,1).toString())).andExpect(status().isOk());
+        database.update("UPDATE system_connection SET kubernetes_token='unreadable-ciphertext' WHERE target_id=?",target.id());
+        mvc.perform(get(base+"/status")).andExpect(status().isOk()).andExpect(jsonPath("$.connectionRevision").value(1))
+                .andExpect(jsonPath("$.kubernetes.state").value("CONNECTION_UNAVAILABLE")).andExpect(jsonPath("$.pods.length()").value(0))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("unreadable-ciphertext"))));
+    }
     @Test @Transactional(propagation=Propagation.NOT_SUPPORTED)
     void failedAuditRollsBackEncryptedProfileAndTargetReferenceTogether() throws Exception {
         var target=create();
