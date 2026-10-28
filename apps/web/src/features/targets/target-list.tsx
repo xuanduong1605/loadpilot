@@ -40,8 +40,8 @@ export function TargetList() {
           <dl className={styles.details}><dt>Environment</dt><dd>{target.environment}</dd><dt>API</dt><dd>{target.baseUrl}</dd>
             <dt>Workload</dt><dd>{target.namespace} / {target.deployment}</dd><dt>Container</dt><dd>{target.container}</dd></dl>
         </article>)}</div>}
-      <div className={styles.pagination}><Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 12))}>Previous</Button>
-        <span>Page {Math.floor(offset / 12) + 1}</span><Button disabled={offset + 12 >= page.total} onClick={() => setOffset(offset + 12)}>Next</Button></div>
+      <div className={styles.pagination}><Button variant="secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 12))}>Previous</Button>
+        <span>Page {Math.floor(offset / 12) + 1}</span><Button variant="secondary" disabled={offset + 12 >= page.total} onClick={() => setOffset(offset + 12)}>Next</Button></div>
     </>}
   </>;
 }

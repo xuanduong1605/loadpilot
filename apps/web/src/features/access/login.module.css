@@ -1,43 +1,17 @@
-.page { min-height: 100dvh; display: grid; grid-template-columns: 1fr 1fr; background: var(--surface); }
-.story { background: #eaf0e3; display: flex; flex-direction: column; padding: 42px 56px; border-right: 1px solid #d9e2d1; }
-.brand { display: inline-flex; width: fit-content; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; font-size: 27px; letter-spacing: -1.2px; text-decoration: none; }
-.brandMark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: var(--green); color: white; font-size: 28px; }
-.storyBody { margin: auto 0; padding: 64px 0; max-width: 430px; }
-.eyebrow { color: var(--green); font-size: 9px; letter-spacing: 1.8px; font-weight: 700; }
-.storyBody h2 { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: clamp(42px, 4vw, 62px); line-height: 1.1; letter-spacing: -2px; margin: 24px 0; }
-.storyBody h2 em { color: #587344; font-weight: 400; }
-.storyBody > p { font-size: 14px; line-height: 1.9; color: #52644a; max-width: 340px; }
-.principles { list-style: none; margin: 34px 0 0; padding: 25px 0 0; border-top: 1px solid #cad6be; display: grid; gap: 17px; }
-.principles li { display: flex; align-items: center; gap: 11px; color: #48633b; font-size: 12px; }
-.storyFooter { font-size: 10px; color: #66775b; }
-.formSide { display: flex; align-items: center; justify-content: center; padding: 56px; }
-.formContainer { width: 100%; max-width: 370px; }
-.formHeading h1 { margin: 17px 0 12px; font-family: Georgia, 'Times New Roman', serif; font-size: 40px; letter-spacing: -1.5px; font-weight: 400; }
-.formHeading > p { color: var(--muted); font-size: 13px; line-height: 1.8; margin: 0; }
-.previewNote { display: flex; align-items: flex-start; gap: 10px; margin: 27px 0; padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--canvas); }
-.previewNote svg { margin-top: 2px; color: var(--green); }
-.previewNote p { font-size: 11px; line-height: 1.8; color: var(--muted); margin: 0; }
-.previewNote strong { display: block; color: var(--ink); font-weight: 600; }
-.form { display: grid; gap: 21px; }
+.page { min-height: 100dvh; display: grid; place-items: center; padding: 40px 20px; }
+.formSide { width: 100%; max-width: 400px; }
+.formSide:focus { outline: none; }
+.brand { display: flex; width: fit-content; align-items: center; gap: 10px; margin: 0 auto 28px; color: var(--ink); font-weight: 700; font-size: 23px; letter-spacing: -.8px; text-decoration: none; }
+.brandMark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--primary); color: white; }
+.formContainer { padding: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+.formHeading { margin-bottom: 26px; }
+.formHeading h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: -.6px; font-weight: 600; }
+.formHeading p { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0; }
+.form { display: grid; gap: 20px; }
 .passwordField { position: relative; }
 .passwordField input { padding-right: 50px; }
-.passwordToggle { position: absolute; display: grid; place-items: center; top: 28px; right: 4px; width: 40px; height: 40px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
-.passwordToggle:hover { color: var(--green); background: var(--green-soft); }
-.submit { width: 100%; justify-content: space-between; }
-.accessHelp { color: var(--muted); font-size: 11px; text-align: center; line-height: 1.8; margin: 23px 0 0; }
-.backLink { text-align: center; padding-top: 28px; margin-top: 28px; border-top: 1px solid var(--line); }
-.backLink a { display: inline-flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: var(--green); text-underline-offset: 4px; }
-@media (min-width: 1440px) {
-  .story { padding: 48px 80px; }
-}
-@media (max-width: 1000px) {
-  .story { padding: 32px; }
-  .formSide { padding: 40px 32px; }
-}
-@media (max-width: 720px) {
-  .page { grid-template-columns: 1fr; }
-  .story { padding: 22px; border-right: 0; border-bottom: 1px solid #d9e2d1; }
-  .storyBody, .storyFooter { display: none; }
-  .formSide { padding: 42px 24px; align-items: flex-start; }
-  .formHeading h1 { font-size: 35px; }
-}
+.passwordToggle { position: absolute; display: grid; place-items: center; top: 29px; right: 4px; width: 36px; height: 34px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; }
+.passwordToggle:hover { color: var(--primary); background: var(--primary-soft); }
+.submit { width: 100%; min-height: 42px; }
+.accessHelp { color: var(--muted); font-size: 11px; text-align: center; line-height: 1.8; margin: 22px 0 0; }
+@media (max-width: 420px) { .page { padding: 28px 16px; } .formContainer { padding: 24px; } }

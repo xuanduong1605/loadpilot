@@ -1,10 +1,10 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes } from 'react';
 import styles from './form-controls.module.css';
 
-export function Button({ children, busy = false, disabled, type = 'button', className = '', ...props }:
-  ButtonHTMLAttributes<HTMLButtonElement> & { busy?: boolean }) {
+export function Button({ children, busy = false, disabled, type = 'button', className = '', variant = 'primary', ...props }:
+  ButtonHTMLAttributes<HTMLButtonElement> & { busy?: boolean; variant?: 'primary' | 'secondary' | 'danger' }) {
   return (
-    <button {...props} type={type} disabled={disabled || busy} aria-busy={busy} className={`${styles.button} ${className}`}>
+    <button {...props} type={type} disabled={disabled || busy} aria-busy={busy} className={`${styles.button} ${variant === 'primary' ? '' : styles[variant]} ${className}`}>
       {busy && <span className={styles.spinner} aria-hidden="true" />}{children}
     </button>
   );

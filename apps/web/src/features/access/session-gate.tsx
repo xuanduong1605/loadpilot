@@ -54,7 +54,7 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
     <noscript>Enable JavaScript to sign in to Loadpilot.</noscript></main>;
   return <WorkspaceShell account={<div className={styles.account}>
     <span className={styles.avatar} aria-hidden="true">{username.slice(0, 1).toUpperCase()}</span>
-    <span className={styles.identity}>Signed in as {username}</span><Button onClick={() => void logout()} disabled={leaving}>{leaving ? 'Signing out…' : 'Sign out'}</Button>
+    <span className={styles.identity}>Signed in as {username}</span><Button variant="secondary" onClick={() => void logout()} disabled={leaving}>{leaving ? 'Signing out…' : 'Sign out'}</Button>
   </div>}>
     {error && <Notice title="Sign out failed" tone="error">{error}</Notice>}
     {children}

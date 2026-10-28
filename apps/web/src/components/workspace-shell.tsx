@@ -26,7 +26,7 @@ export function WorkspaceShell({ children, account }: { children: React.ReactNod
       <aside className={styles.sidebar} aria-label="Workspace sidebar">
         <div className={styles.brandRow}>
           <Link className={styles.brand} href="/" onClick={() => setMenuOpen(false)}>
-            <span className={styles.brandMark}>↗</span> loadpilot<span className={styles.brandDot}>.</span>
+            <span className={styles.brandMark}><Icon name="chart" width={21} height={21} /></span> loadpilot<span className={styles.brandDot}>.</span>
           </Link>
           <button className={styles.menuButton} type="button" aria-label="Toggle navigation"
             aria-expanded={menuOpen} aria-controls="workspace-navigation" onClick={() => setMenuOpen(!menuOpen)}>
@@ -53,7 +53,7 @@ export function WorkspaceShell({ children, account }: { children: React.ReactNod
           {account}
         </header>
         <main id="main-content" className={styles.content} tabIndex={-1}>{children}</main>
-        <footer className={styles.footer}><span>Loadpilot · Performance laboratory</span><span>Measure. Learn. Refine.</span></footer>
+        <footer className={styles.footer}><span>Loadpilot · Performance laboratory</span><span>Kubernetes performance engineering</span></footer>
       </div>
     </div>
   );

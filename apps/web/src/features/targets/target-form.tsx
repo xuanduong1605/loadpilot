@@ -34,6 +34,6 @@ export function TargetForm({ target, onSaved, onCancel }: { target?: Target; onS
       <TextField id="target-container" label="Container" required maxLength={63} pattern={'[a-z0-9]([a-z0-9\\-]*[a-z0-9])?'} {...field('container')} />
     </fieldset>
     <p className={styles.hint}>Registration saves this system&apos;s details. Its connection will remain unchecked until diagnostics run.</p>
-    <div className={styles.actions}><Button type="submit" busy={pending}>{target ? 'Save changes' : 'Register system'}</Button><Button disabled={pending} onClick={onCancel}>Cancel</Button></div>
+    <div className={styles.actions}><Button type="submit" busy={pending}>{target ? 'Save changes' : 'Register system'}</Button><Button variant="secondary" disabled={pending} onClick={onCancel}>Cancel</Button></div>
   </form>;
 }

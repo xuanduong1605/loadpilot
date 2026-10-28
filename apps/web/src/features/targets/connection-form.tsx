@@ -50,6 +50,6 @@ export function ConnectionForm({ target, connection, policy, onSaved, onCancel }
       These credentials are scoped for read-only inspection of this system. I have not supplied administrator credentials.</label>
     <details className={styles.hint}><summary>Allowed destinations</summary><p>{policy.allowedOrigins.length ? policy.allowedOrigins.join(', ') : 'No destinations configured. Ask the platform operator to allow the private service origins and addresses.'}</p></details>
     <p className={styles.hint}>Tokens are stored encrypted on the platform and never returned to this browser. Saving does not run an inspection or start a test.</p>
-    <div className={styles.actions}><Button type="submit" busy={pending} disabled={!secure || !policy.encryptionAvailable || !acknowledged}>Save connection</Button><Button disabled={pending} onClick={onCancel}>Cancel</Button></div>
+    <div className={styles.actions}><Button type="submit" busy={pending} disabled={!secure || !policy.encryptionAvailable || !acknowledged}>Save connection</Button><Button variant="secondary" disabled={pending} onClick={onCancel}>Cancel</Button></div>
   </form>;
 }

@@ -60,7 +60,7 @@ export function ConnectionPanel({ target, onSaved }: { target: Target; onSaved: 
     {error && <Notice title="Cannot complete the connection check" tone="error">{error}{snapshot ? ' Previously collected values below are not a new observation.' : ''}</Notice>}
     {!connection || !policy ? <><p role="status">{error ? 'Connection settings are unavailable.' : 'Loading connection settings…'}</p>{error && <Button onClick={() => void load()}>Retry connection settings</Button>}</>
       : <><p className={styles.hint}>{connection.revision ? `Kubernetes endpoint: ${connection.kubernetesUrl}` : 'Connection not checked. Set up a connection to inspect this system.'}</p>
-        <div className={styles.actions}><Button onClick={() => { setAuto(false); setEditing(true); }}>{connection.revision ? 'Edit connection' : 'Set up connection'}</Button>
+        <div className={styles.actions}><Button variant={connection.revision ? 'secondary' : 'primary'} onClick={() => { setAuto(false); setEditing(true); }}>{connection.revision ? 'Edit connection' : 'Set up connection'}</Button>
           <Button busy={pending} disabled={!connection.revision} onClick={() => void inspect()}>Check connection &amp; refresh</Button>
           <label className={styles.confirm}><input type="checkbox" checked={auto} disabled={!connection.revision} onChange={event => { setAuto(event.target.checked); if (event.target.checked) void inspect(); }} /> Auto-refresh every 15 seconds</label></div></>}
     {pending && <p role="status">Inspecting endpoints from the platform…</p>}

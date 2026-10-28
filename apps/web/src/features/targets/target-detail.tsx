@@ -51,12 +51,12 @@ export function TargetDetail() {
         <dl className={styles.details}><dt>API</dt><dd>{target.baseUrl}</dd><dt>Environment</dt><dd>{target.environment}</dd><dt>Namespace</dt><dd>{target.namespace}</dd>
           <dt>Deployment</dt><dd>{target.deployment}</dd><dt>Container</dt><dd>{target.container}</dd><dt>Credentials</dt><dd>{target.credentialRef === target.id ? 'Saved for this system' : target.credentialRef || 'Not configured'}</dd>
           <dt>Monitoring</dt><dd>{target.monitoringRef === target.id ? 'Configured for this system' : target.monitoringRef || 'Not configured'}</dd><dt>Updated</dt><dd><time dateTime={target.updatedAt}>{new Date(target.updatedAt).toLocaleString()}</time></dd></dl>
-        {!target.archivedAt && <div className={styles.actions}><Button onClick={() => setEditing(true)}>Edit system</Button><Button onClick={() => setConfirmArchive(true)}>Archive system</Button></div>}
+        {!target.archivedAt && <div className={styles.actions}><Button variant="secondary" onClick={() => setEditing(true)}>Edit system</Button><Button variant="danger" onClick={() => setConfirmArchive(true)}>Archive system</Button></div>}
         {target.archivedAt && <p className={styles.hint}>This system is archived. Its identity and history are retained.</p>}
       </section>}
       {!editing && !target.archivedAt && <ConnectionPanel key={`${target.id}:${target.revision}`} target={target} onSaved={() => void load()} />}
       {confirmArchive && <section className={styles.panel} aria-label="Confirm archive"><h2>Archive this system?</h2><p>It will be hidden from the active list. Its identity and history will be retained.</p>
-        <div className={styles.actions}><Button busy={pending} onClick={() => void archive()}>Confirm archive</Button><Button disabled={pending} onClick={() => setConfirmArchive(false)}>Cancel</Button></div></section>}
+        <div className={styles.actions}><Button variant="danger" busy={pending} onClick={() => void archive()}>Confirm archive</Button><Button variant="secondary" disabled={pending} onClick={() => setConfirmArchive(false)}>Cancel</Button></div></section>}
     </>}
   </>;
 }

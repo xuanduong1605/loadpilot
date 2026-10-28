@@ -12,7 +12,7 @@ export function WorkspaceSection({ title, description, icon, heading, children }
   return (
     <>
       <div className={styles.heading}>
-        <span className={styles.eyebrow}>Your workspace</span>
+        <span className={styles.eyebrow}>Workspace / {title}</span>
         <h1>{title}</h1>
         <p>{description}</p>
       </div>
