@@ -31,7 +31,7 @@ async (page) => {
     await page.getByText('Signed in as admin').waitFor();
     await page.reload();
     await page.getByText('Signed in as admin').waitFor();
-    for (const name of ['Scenarios', 'Experiments', 'Comparisons', 'Settings', 'Targets']) {
+    for (const name of ['Scenarios', 'Experiments', 'Comparisons', 'Settings', 'Systems']) {
       await page.getByRole('link', { name, exact: true }).click();
       await page.getByRole('heading', { name, exact: true, level: 1 }).waitFor();
     }

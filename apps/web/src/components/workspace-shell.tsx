@@ -8,7 +8,7 @@ import styles from './workspace.module.css';
 
 const navigation: { href: string; label: string; icon: IconName }[] = [
   { href: '/', label: 'Overview', icon: 'grid' },
-  { href: '/targets/', label: 'Targets', icon: 'target' },
+  { href: '/targets/', label: 'Systems', icon: 'target' },
   { href: '/scenarios/', label: 'Scenarios', icon: 'scenarios' },
   { href: '/experiments/', label: 'Experiments', icon: 'experiments' },
   { href: '/comparisons/', label: 'Comparisons', icon: 'compare' },
@@ -18,7 +18,7 @@ const navigation: { href: string; label: string; icon: IconName }[] = [
 export function WorkspaceShell({ children, account }: { children: React.ReactNode; account?: React.ReactNode }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-  const current = navigation.find(({ href }) => href === pathname || href === `${pathname}/`);
+  const current = navigation.find(({ href }) => href === pathname || href === `${pathname}/` || (href !== '/' && pathname.startsWith(href)));
 
   return (
     <div className={styles.workspace}>
