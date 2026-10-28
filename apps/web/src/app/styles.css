@@ -7,9 +7,6 @@
   --line: #E2E8F0;
   --line-strong: #CBD5E1;
   --primary: #326CE5;
-  --green: var(--primary);
-  --green-hover: var(--primary-hover);
-  --green-soft: var(--primary-soft);
   --primary-hover: #2558C8;
   --primary-soft: #EFF6FF;
   --success: #15803D;
