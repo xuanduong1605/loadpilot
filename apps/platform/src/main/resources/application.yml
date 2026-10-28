@@ -9,6 +9,16 @@ spring:
       maximum-pool-size: 5
 server:
   shutdown: graceful
+  forward-headers-strategy: native
+  servlet:
+    session:
+      timeout: ${SESSION_TIMEOUT:30m}
+      cookie:
+        name: LOADPILOT_SESSION
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:false}
+        same-site: lax
+        path: /
   tomcat:
     threads:
       max: 24
