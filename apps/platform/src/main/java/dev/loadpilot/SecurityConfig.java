@@ -4,13 +4,14 @@ import dev.loadpilot.access.AccessResponses;
 import dev.loadpilot.access.AccessAudit;
 import dev.loadpilot.access.LoginThrottle;
 import dev.loadpilot.access.IdleSessionFilter;
-import org.springframework.beans.factory.annotation.Value;
+import dev.loadpilot.access.DatabaseAccounts;
+import javax.sql.DataSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+import org.springframework.security.provisioning.JdbcUserDetailsManager;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -23,12 +24,8 @@ class SecurityConfig {
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
 
     @Bean
-    InMemoryUserDetailsManager users(@Value("${platform.username}") String username,
-                                    @Value("${platform.password}") String password, PasswordEncoder encoder) {
-        if (password.length() < 20) throw new IllegalArgumentException("PLATFORM_PASSWORD must be at least 20 characters");
-        if (username.isBlank() || username.length() > 128) throw new IllegalArgumentException("Invalid PLATFORM_USER");
-        return new InMemoryUserDetailsManager(User.withUsername(username)
-                .password(encoder.encode(password)).roles("OPERATOR").build());
+    JdbcUserDetailsManager users(DataSource source) {
+        return new DatabaseAccounts(source);
     }
 
     @Bean HttpSessionEventPublisher sessionEvents() { return new HttpSessionEventPublisher(); }
@@ -59,7 +56,9 @@ class SecurityConfig {
                             }
                         })
                         .failureHandler((req, res, ex) -> {
-                            if (audit.record(res, null, "LOGIN", "DENIED"))
+                            if (ex instanceof AuthenticationServiceException)
+                                responses.error(res, 503, "ACCESS_UNAVAILABLE", "Sign-in service is unavailable. Try again later.");
+                            else if (audit.record(res, null, "LOGIN", "DENIED"))
                                 responses.error(res, 401, "INVALID_CREDENTIALS", "Username or password is incorrect.");
                         }))
                 .logout(logout -> logout.logoutUrl("/api/access/logout").deleteCookies("LOADPILOT_SESSION")

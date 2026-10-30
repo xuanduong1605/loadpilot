@@ -4,6 +4,7 @@ import dev.loadpilot.access.AccessApi;
 import dev.loadpilot.access.AccessAudit;
 import dev.loadpilot.access.AccessResponses;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -25,6 +26,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AccessSecurityTest {
     @Autowired MockMvc mvc;
     @MockitoBean JdbcTemplate database;
+    @MockitoBean org.springframework.security.provisioning.JdbcUserDetailsManager users;
+
+    @BeforeEach void configuredAccount() {
+        String password = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode("integration-test-password-123");
+        when(users.loadUserByUsername(anyString())).thenAnswer(call -> {
+            if (!"admin".equals(call.getArgument(0))) throw new org.springframework.security.core.userdetails.UsernameNotFoundException("Unknown account");
+            return org.springframework.security.core.userdetails.User.withUsername("admin").password(password).roles("OPERATOR").build();
+        });
+    }
 
     @Test void anonymousBasicAndMissingCsrfCannotBypassSessionSecurity() throws Exception {
         mvc.perform(get("/api/status")).andExpect(status().isUnauthorized())
@@ -87,4 +97,12 @@ class AccessSecurityTest {
                 .andExpect(status().isOk());
         mvc.perform(get("/api/access/session").session(previous)).andExpect(status().isUnauthorized());
     }
+
+    @Test void accountDatabaseOutageFailsClosedWithoutLeakingDetails() throws Exception {
+        when(users.loadUserByUsername("admin")).thenThrow(new org.springframework.security.authentication.AuthenticationServiceException("Account storage is unavailable."));
+        mvc.perform(post("/api/access/login").with(csrf()).param("username", "admin").param("password", "integration-test-password-123"))
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("ACCESS_UNAVAILABLE"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("private-database-detail"))));
+    }
+
 }
