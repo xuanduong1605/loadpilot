@@ -103,6 +103,15 @@ class AccessSecurityTest {
         mvc.perform(post("/api/access/login").with(csrf()).param("username", "admin").param("password", "integration-test-password-123"))
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("ACCESS_UNAVAILABLE"))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("private-database-detail"))));
+        mvc.perform(get("/api/status").with(user("admin").roles("OPERATOR")))
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("ACCESS_UNAVAILABLE"));
     }
 
+    @Test void accountLookupOutageDoesNotPreventLogoutRevokingTheSession() throws Exception {
+        when(users.loadUserByUsername("admin")).thenThrow(new org.springframework.security.authentication.AuthenticationServiceException("Account storage is unavailable."));
+        var session = new MockHttpSession();
+        mvc.perform(post("/api/access/logout").session(session).with(user("admin").roles("OPERATOR")).with(csrf()))
+                .andExpect(status().isNoContent()).andExpect(cookie().maxAge("LOADPILOT_SESSION", 0));
+        assertThat(session.isInvalid()).isTrue();
+    }
 }

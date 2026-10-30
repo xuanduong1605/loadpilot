@@ -77,7 +77,23 @@ class AccountIntegrationTest {
         assertThat(database.queryForObject("SELECT count(*) FROM access_audit WHERE action='ACCOUNT_BOOTSTRAP'", Integer.class)).isEqualTo(auditCount);
     }
 
+    @Test void disablingAccountRevokesExistingSessionAndRejectsNewLogin() throws Exception {
+        seed("account-seed", PASSWORD);
+        var session = login();
+        database.update("UPDATE users SET enabled=false WHERE username='account-seed'");
+        mvc.perform(get("/api/access/session").session(session)).andExpect(status().isUnauthorized());
+        assertThat(session.isInvalid()).isTrue();
+        mvc.perform(post("/api/access/login").with(csrf()).param("username", "account-seed").param("password", PASSWORD))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+    }
 
+    @Test void removingRoleRevokesExistingSession() throws Exception {
+        seed("account-seed", PASSWORD);
+        var session = login();
+        database.update("DELETE FROM authorities WHERE username='account-seed'");
+        mvc.perform(get("/api/status").session(session)).andExpect(status().isUnauthorized());
+        assertThat(session.isInvalid()).isTrue();
+    }
 
     @Test void failedBootstrapAuditRollsBackAccountAndRoleTogether() {
         var nested = new org.springframework.transaction.support.TransactionTemplate(transactions);

@@ -4,6 +4,7 @@ import dev.loadpilot.access.AccessResponses;
 import dev.loadpilot.access.AccessAudit;
 import dev.loadpilot.access.LoginThrottle;
 import dev.loadpilot.access.IdleSessionFilter;
+import dev.loadpilot.access.AccountStatusFilter;
 import dev.loadpilot.access.DatabaseAccounts;
 import javax.sql.DataSource;
 import org.springframework.context.annotation.Bean;
@@ -31,9 +32,10 @@ class SecurityConfig {
     @Bean HttpSessionEventPublisher sessionEvents() { return new HttpSessionEventPublisher(); }
 
     @Bean
-    SecurityFilterChain security(HttpSecurity http, AccessResponses responses, AccessAudit audit) throws Exception {
+    SecurityFilterChain security(HttpSecurity http, AccessResponses responses, AccessAudit audit, JdbcUserDetailsManager users) throws Exception {
         return http.requestCache(cache -> cache.disable())
                 .addFilterAfter(new IdleSessionFilter(responses), org.springframework.security.web.context.SecurityContextHolderFilter.class)
+                .addFilterAfter(new AccountStatusFilter(users, responses), IdleSessionFilter.class)
                 .authorizeHttpRequests(a -> a.requestMatchers(HttpMethod.GET, "/actuator/health", "/api/access/csrf").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/access/login").permitAll()
                         .anyRequest().hasRole("OPERATOR"))
