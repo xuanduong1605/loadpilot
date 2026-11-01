@@ -42,10 +42,6 @@ export function WorkspaceShell({ children, account }: { children: React.ReactNod
             </Link>
           ))}
         </nav>
-        <div className={styles.sidebarFooter}>
-          <span className={styles.workspaceAvatar}>L</span>
-          <div><strong>Performance lab</strong><span>Operator workspace</span></div>
-        </div>
       </aside>
       <div className={styles.body}>
         <header className={styles.topbar}>
@@ -53,7 +49,6 @@ export function WorkspaceShell({ children, account }: { children: React.ReactNod
           {account}
         </header>
         <main id="main-content" className={styles.content} tabIndex={-1}>{children}</main>
-        <footer className={styles.footer}><span>Loadpilot · Performance laboratory</span><span>Kubernetes performance engineering</span></footer>
       </div>
     </div>
   );
