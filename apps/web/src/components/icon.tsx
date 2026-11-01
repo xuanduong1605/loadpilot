@@ -9,9 +9,11 @@ const paths = {
   eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Zm10-3a3 3 0 1 0 0 6 3 3 0 0 0 0-6',
   grid: 'M3 3h7v7H3Zm11 0h7v7h-7ZM3 14h7v7H3Zm11 0h7v7h-7Z',
   lock: 'M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5Zm7 5v2',
+  logout: 'M9 4H4v16h5m5-12 4 4-4 4m-6-4h10',
   menu: 'M4 6h16M4 12h16M4 18h16',
   scenarios: 'm8 7-5 5 5 5m8-10 5 5-5 5m-3-14-2 18',
   settings: 'M4 7h16M4 17h16M8 4v6m8 4v6',
+  preferences: 'M4 6h16M4 12h16M4 18h16M8 3v6m8 0v6m-6 0v6',
   target: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 5h.01',
 } as const;
 

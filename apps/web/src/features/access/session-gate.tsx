@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, accessPost } from '../../lib/api';
 import { Button, Notice } from '../../components/form-controls';
 import { WorkspaceShell } from '../../components/workspace-shell';
+import { AccountMenu } from './account-menu';
 import styles from './session.module.css';
 
 export function SessionGate({ children }: { children: React.ReactNode }) {
@@ -52,10 +53,7 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
   if (!username) return <main className={styles.loading}><p role="status">{error || 'Checking your session…'}</p>
     {error && <Button onClick={() => void check()}>Try again</Button>}
     <noscript>Enable JavaScript to sign in to Loadpilot.</noscript></main>;
-  return <WorkspaceShell account={<div className={styles.account}>
-    <span className={styles.avatar} aria-hidden="true">{username.slice(0, 1).toUpperCase()}</span>
-    <span className={styles.identity}>Signed in as {username}</span><Button variant="secondary" onClick={() => void logout()} disabled={leaving}>{leaving ? 'Signing out…' : 'Sign out'}</Button>
-  </div>}>
+  return <WorkspaceShell account={<AccountMenu username={username} leaving={leaving} onLogout={() => void logout()} />}>
     {error && <Notice title="Sign out failed" tone="error">{error}</Notice>}
     {children}
   </WorkspaceShell>;

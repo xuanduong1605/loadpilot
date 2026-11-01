@@ -68,7 +68,7 @@ async (page) => {
     await page.getByLabel('Auto-refresh every 15 seconds', { exact: true }).uncheck();
     await page.setViewportSize({ width: 390, height: 844 });
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Mobile overflow');
-    assert(await page.evaluate(() => localStorage.length === 0 && sessionStorage.length === 0), 'Connection stored in browser storage');
+    assert(await page.evaluate(() => sessionStorage.length === 0 && Object.keys(localStorage).every(key => key === 'loadpilot:compact-layout') && [null, 'true', 'false'].includes(localStorage.getItem('loadpilot:compact-layout'))), 'Connection stored in browser storage');
     assert(failures.length === 0, `Static failures: ${failures.join(', ')}`);
     return { passed: true, id, checks: ['self-service setup', 'write-only token', 'owned Pod scope', 'unit conversion', 'token rotation', 'cluster401 distinct from session401', 'multiple-system isolation', 'live background refresh', 'mobile', 'no browser storage', 'static routes'] };
   } finally { page.off('response', record); }

@@ -28,9 +28,9 @@ async (page) => {
     await page.getByLabel('Password', { exact: true }).fill('integration-test-password-123');
     await page.getByLabel('Password', { exact: true }).press('Enter');
     await page.waitForURL(`${base}/targets/`);
-    await page.getByText('Signed in as admin').waitFor();
+    await page.getByRole('button', { name: 'Account menu for admin', exact: true }).waitFor();
     await page.reload();
-    await page.getByText('Signed in as admin').waitFor();
+    await page.getByRole('button', { name: 'Account menu for admin', exact: true }).waitFor();
     for (const name of ['Scenarios', 'Experiments', 'Comparisons', 'Settings', 'Systems']) {
       await page.getByRole('link', { name, exact: true }).click();
       await page.getByRole('heading', { name, exact: true, level: 1 }).waitFor();
@@ -42,11 +42,12 @@ async (page) => {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Mobile overflow');
     const cookie = (await page.context().cookies()).find(cookie => cookie.name === 'LOADPILOT_SESSION');
     assert(cookie?.httpOnly && cookie.sameSite === 'Lax' && cookie.path === '/', 'Session cookie policy failed');
-    assert(await page.evaluate(() => localStorage.length === 0 && sessionStorage.length === 0), 'Unexpected browser storage');
-    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    assert(await page.evaluate(() => sessionStorage.length === 0 && Object.keys(localStorage).every(key => key === 'loadpilot:compact-layout') && [null, 'true', 'false'].includes(localStorage.getItem('loadpilot:compact-layout'))), 'Unexpected browser storage');
+    await page.getByRole('button', { name: 'Account menu for admin', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
     await page.waitForURL(`${base}/login/`);
     assert(await page.evaluate(async () => (await fetch('/api/status')).status) === 401, 'Logout did not revoke API access');
     assert(staticFailures.length === 0, `Static route failures: ${staticFailures.join(', ')}`);
-    return { passed: true, checks: ['deep link', 'validation', 'password toggle', 'wrong credentials', 'keyboard login', 'reload', 'section navigation', 'mobile', 'cookie policy', 'no storage', 'logout'], staticFailures };
+    return { passed: true, checks: ['deep link', 'validation', 'password toggle', 'wrong credentials', 'keyboard login', 'reload', 'section navigation', 'mobile', 'cookie policy', 'no auth browser storage', 'logout'], staticFailures };
   } finally { page.off('response', record); }
 }

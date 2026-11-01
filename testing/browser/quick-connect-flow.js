@@ -84,7 +84,7 @@ async (page) => {
     await page.getByRole('button', { name: 'Enter details manually', exact: true }).click();
     await page.getByLabel('Namespace', { exact: true }).fill('Not Valid');
     assert(await page.getByLabel('Namespace', { exact: true }).evaluate(element => !element.checkValidity()), 'Manual namespace validation missing');
-    assert(await page.evaluate(() => !localStorage.length && !sessionStorage.length), 'Browser storage used');
+    assert(await page.evaluate(() => sessionStorage.length === 0 && Object.keys(localStorage).every(key => key === 'loadpilot:compact-layout') && [null, 'true', 'false'].includes(localStorage.getItem('loadpilot:compact-layout'))), 'Connection or session stored in browser storage');
     assert(failures.length === 0, `Static failures: ${failures.join(',')}`);
     return { result: 'PASS', writes, automaticInspection: true, rollback: true, import: true, renewal: true, duplicate: true, upstream401: true, metadataOnly: true, mobile: true, staticFailures: failures };
   } finally { page.off('response', record); }
