@@ -11,6 +11,8 @@ const paths = {
   lock: 'M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5Zm7 5v2',
   logout: 'M9 4H4v16h5m5-12 4 4-4 4m-6-4h10',
   menu: 'M4 6h16M4 12h16M4 18h16',
+  memory: 'M7 3v3m5-3v3m5-3v3M7 18v3m5-3v3m5-3v3M3 7h3m-3 5h3m-3 5h3m12-10h3m-3 5h3m-3 5h3M6 6h12v12H6Zm4 4h4v4h-4Z',
+  refresh: 'M20 7v5h-5M4 17v-5h5m-4-4a8 8 0 0 1 13-3l2 3M4 16l2 3a8 8 0 0 0 13-3',
   scenarios: 'm8 7-5 5 5 5m8-10 5 5-5 5m-3-14-2 18',
   settings: 'M4 7h16M4 17h16M8 4v6m8 4v6',
   preferences: 'M4 6h16M4 12h16M4 18h16M8 3v6m8 0v6m-6 0v6',

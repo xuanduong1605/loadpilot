@@ -10,6 +10,7 @@ import { RegistrationForm } from './registration-form';
 import { ConnectionPanel } from './connection-panel';
 import type { Target } from './types';
 import styles from './targets.module.css';
+import detail from './system-detail.module.css';
 
 export function TargetDetail() {
   const query = useSearchParams();
@@ -42,20 +43,20 @@ export function TargetDetail() {
   }
   function saved(value: Target, check = false) { setTarget(value); setEditing(false); if (create) router.replace(`/targets/detail/?id=${value.id}${check ? '&check=1' : ''}`); }
   return <>
-    <div className={styles.heading}><div><h1>{create ? 'Register system' : target?.id === id ? target.name : 'System details'}</h1><p>Keep each application&apos;s workload and connection details together.</p></div><Link className={styles.backAction} href="/targets/">All systems</Link></div>
+    <div className={create ? styles.heading : detail.heading}><div><h1>{create ? 'Register system' : target?.id === id ? target.name : 'System details'}</h1>
+      {create ? <p>Keep each application&apos;s workload and connection details together.</p> : target?.id === id && <div className={detail.subtitle}><span className={detail.environment}>{target.environment.toLowerCase()}</span><span>{target.namespace} / {target.deployment}</span><span>Container {target.container}</span>{target.archivedAt && <span>Archived</span>}</div>}</div>
+      <div className={detail.headingActions}>{!create && target?.id === id && !target.archivedAt && !editing && <Button variant="secondary" onClick={() => setEditing(true)}>Edit system</Button>}<Link className={styles.backAction} href="/targets/">All systems</Link></div>
+    </div>
     {error && <><Notice title="Cannot complete this action" tone="error">{error}</Notice><div className={styles.actions}><Button onClick={() => void load()}>Reload system</Button></div></>}
     {loading && <p role="status">Loading system…</p>}
     {!create && !valid && <Notice title="Choose a system">Open a system from the systems list to view its details.</Notice>}
     {create ? <RegistrationForm onSaved={saved} onCancel={() => router.push('/targets/')} /> : !loading && valid && target?.id === id && <>
-      {editing ? <TargetForm key={`${target.id}:${target.revision}`} target={target} onSaved={saved} onCancel={() => setEditing(false)} /> : <section className={`${styles.panel} ${styles.metadata}`}>
-        <span className={styles.badge}>{target.archivedAt ? 'Archived' : 'Registered'}</span>
-        <dl className={styles.details}><dt>API</dt><dd>{target.baseUrl}</dd><dt>Environment</dt><dd>{target.environment}</dd><dt>Namespace</dt><dd>{target.namespace}</dd>
-          <dt>Deployment</dt><dd>{target.deployment}</dd><dt>Container</dt><dd>{target.container}</dd><dt>Credentials</dt><dd>{target.credentialRef === target.id ? 'Saved for this system' : target.credentialRef || 'Not configured'}</dd>
-          <dt>Monitoring</dt><dd>{target.monitoringRef === target.id ? 'Configured for this system' : target.monitoringRef || 'Not configured'}</dd><dt>Updated</dt><dd><time dateTime={target.updatedAt}>{new Date(target.updatedAt).toLocaleString()}</time></dd></dl>
-        {!target.archivedAt && <div className={styles.actions}><Button variant="secondary" onClick={() => setEditing(true)}>Edit system</Button><Button variant="danger" onClick={() => setConfirmArchive(true)}>Archive system</Button></div>}
-        {target.archivedAt && <p className={styles.hint}>This system is archived. Its identity and history are retained.</p>}
-      </section>}
+      {editing && <TargetForm key={`${target.id}:${target.revision}`} target={target} onSaved={saved} onCancel={() => setEditing(false)} />}
+      {!editing && target.archivedAt && <p className={detail.archived}>This system is archived. Its identity and history are retained.</p>}
       {!editing && !target.archivedAt && <ConnectionPanel key={`${target.id}:${target.revision}`} target={target} inspectOnMount={query.get('check') === '1'} onSaved={() => void load()} />}
+      {!editing && <details className={`${detail.disclosure} ${detail.metadata}`}><summary>System settings</summary><dl className={detail.settings}><dt>API base URL</dt><dd>{target.baseUrl}</dd><dt>Updated</dt><dd><time dateTime={target.updatedAt}>{new Date(target.updatedAt).toLocaleString()}</time></dd></dl>
+        {!target.archivedAt && <div className={styles.actions}><Button variant="danger" onClick={() => setConfirmArchive(true)}>Archive system</Button></div>}
+      </details>}
       {confirmArchive && <section className={styles.panel} aria-label="Confirm archive"><h2>Archive this system?</h2><p>It will be hidden from the active list. Its identity and history will be retained.</p>
         <div className={styles.actions}><Button variant="danger" busy={pending} onClick={() => void archive()}>Confirm archive</Button><Button variant="secondary" disabled={pending} onClick={() => setConfirmArchive(false)}>Cancel</Button></div></section>}
     </>}
