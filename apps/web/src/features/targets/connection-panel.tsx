@@ -11,7 +11,7 @@ import styles from './targets.module.css';
 const number = (value: number | null | undefined, divisor = 1) => value == null ? 'Unavailable' : new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value / divisor);
 const state = (value: string) => value.toLowerCase().replaceAll('_', ' ');
 
-export function ConnectionPanel({ target, onSaved }: { target: Target; onSaved: () => void }) {
+export function ConnectionPanel({ target, onSaved, inspectOnMount = false }: { target: Target; onSaved: () => void; inspectOnMount?: boolean }) {
   const [connection, setConnection] = useState<ConnectionView>();
   const [policy, setPolicy] = useState<ConnectionPolicy>();
   const [editing, setEditing] = useState(false);
@@ -22,6 +22,7 @@ export function ConnectionPanel({ target, onSaved }: { target: Target; onSaved: 
   const [now, setNow] = useState(Date.now());
   const working = useRef(false);
   const mounted = useRef(true);
+  const initialInspection = useRef(false);
   const load = useCallback(async () => {
     setError('');
     try {
@@ -47,6 +48,11 @@ export function ConnectionPanel({ target, onSaved }: { target: Target; onSaved: 
     } catch (reason) { if (mounted.current) { setError(reason instanceof Error ? reason.message : 'Inspection failed.'); setAuto(false); } }
     finally { working.current = false; if (mounted.current) setPending(false); }
   }, [target.id, target.revision, connection?.revision]);
+  useEffect(() => {
+    if (inspectOnMount && connection?.revision && !initialInspection.current) {
+      initialInspection.current = true; void inspect();
+    }
+  }, [inspectOnMount, connection?.revision, inspect]);
   useEffect(() => {
     if (!auto) return;
     const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void inspect(false); }, 15_000);

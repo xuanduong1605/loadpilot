@@ -9,13 +9,14 @@ async (page) => {
   try {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${base}/targets/detail/?new=1`);
-    await page.getByRole('button', { name: /Sign in|Register system/, exact: true }).waitFor();
+    await page.getByRole('button', { name: /Sign in|Register system|Connect system/, exact: true }).waitFor();
     if (page.url().includes('/login/')) {
       await page.getByLabel('Username', { exact: true }).fill('admin');
       await page.getByLabel('Password', { exact: true }).fill('integration-test-password-123');
       await page.getByRole('button', { name: 'Sign in', exact: true }).click();
       await page.waitForURL(`${base}/targets/detail/?new=1`);
     }
+    await page.getByRole('button', { name: 'Register details only', exact: true }).click();
     for (const [label, value] of Object.entries({ 'System name': name, 'API base URL': 'https://fixture.example.invalid', Namespace: 'fixture', Deployment: 'fixture-api', Container: 'api' }))
       await page.getByLabel(label, { exact: true }).fill(value);
     await page.getByRole('button', { name: 'Register system', exact: true }).click();
@@ -55,6 +56,7 @@ async (page) => {
     await page.getByText('Choose a system', { exact: true }).waitFor();
     await page.goto(`${base}/targets/detail/?new=1`);
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: 'Register details only', exact: true }).click();
     await page.getByLabel('Namespace', { exact: true }).fill('Not Valid');
     assert(await page.getByLabel('Namespace', { exact: true }).evaluate(element => !element.checkValidity()), 'Namespace pattern not enforced');
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Mobile form overflow');

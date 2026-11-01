@@ -31,6 +31,15 @@
 .cards .panel + .panel { margin-top: 0; }
 .form textarea { display: block; box-sizing: border-box; width: 100%; resize: vertical; border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 12px; margin-top: 8px; background: var(--surface); color: var(--ink); font: 12px/1.6 ui-monospace, monospace; }
 .confirm { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.modes { display: flex; gap: 10px; flex-wrap: wrap; }
+.importBox { border: 1px dashed var(--line-strong); border-radius: var(--radius-md); padding: 18px; background: var(--canvas); display: grid; gap: 12px; min-width: 0; }
+.importBox h2, .importBox p { margin: 0; }
+.importBox label { font-size: 12px; font-weight: 600; }
+.importBox input { max-width: 100%; min-width: 0; font-size: 12px; }
+.setupCommand { display: block; background: var(--surface); padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); font: 12px/1.7 ui-monospace, monospace; overflow-wrap: anywhere; }
+.optional { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-md); padding: 14px; }
+.optional summary { cursor: pointer; font-size: 12px; font-weight: 600; }
+.optional[open] summary { margin-bottom: 18px; }
 .checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; margin-top: 22px; }
 .checks article { background: var(--canvas); border: 1px solid var(--line); padding: 16px; border-radius: var(--radius-md); }
 .checks h3 { font-size: 12px; font-weight: 500; margin: 0 0 10px; }

@@ -25,6 +25,7 @@ async (page) => {
     });
     assert(seed.ca.includes('BEGIN CERTIFICATE'), 'Fixture public CA is unavailable');
     await page.getByRole('link', { name: 'Register system', exact: true }).click();
+    await page.getByRole('button', { name: 'Register details only', exact: true }).click();
     const name = `Connection regression ${Date.now()}`;
     for (const [label, value] of Object.entries({ 'System name': name, 'API base URL': 'http://127.0.0.1:18080/health', Namespace: 'fixture', Deployment: 'fixture-api', Container: 'api' }))
       await page.getByLabel(label, { exact: true }).fill(value);
@@ -34,6 +35,7 @@ async (page) => {
     await page.getByRole('button', { name: 'Set up connection', exact: true }).click();
     await page.getByLabel('Kubernetes API URL', { exact: true }).fill('https://127.0.0.1:18443');
     await page.getByLabel('Read-only Kubernetes token', { exact: true }).fill('fixture-readonly-token');
+    await page.getByText('Certificate authority (optional)', { exact: true }).click();
     await page.getByLabel('Kubernetes CA certificate (PEM, optional)', { exact: true }).fill(seed.ca);
     await page.getByRole('checkbox', { name: /These credentials are scoped/ }).check();
     await page.getByRole('button', { name: 'Save connection', exact: true }).click();
