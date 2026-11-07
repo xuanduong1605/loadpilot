@@ -1,0 +1,8 @@
+{
+  "name": "@loadpilot/script-validator",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "test": "node --test validator.test.cjs execution.test.cjs" },
+  "dependencies": { "acorn": "8.19.0" },
+  "engines": { "node": ">=24 <25" }
+}

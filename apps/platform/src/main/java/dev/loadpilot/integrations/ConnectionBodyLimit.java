@@ -17,9 +17,12 @@ public class ConnectionBodyLimit {
         var filter = new OncePerRequestFilter() {
             @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
                     throws ServletException, IOException {
-                if (!request.getRequestURI().startsWith("/api/integrations/") || "GET".equals(request.getMethod())) { chain.doFilter(request,response); return; }
-                if (request.getContentLengthLong() > LIMIT) {
-                    responses.error(response,413,"REQUEST_TOO_LARGE","Connection settings exceed the 32 KiB request limit."); return;
+                boolean scenario = request.getRequestURI().equals("/api/scenarios") || request.getRequestURI().startsWith("/api/scenarios/");
+                boolean experiment = request.getRequestURI().startsWith("/api/experiments/");
+                if ((!scenario && !experiment && !request.getRequestURI().startsWith("/api/integrations/")) || "GET".equals(request.getMethod())) { chain.doFilter(request,response); return; }
+                final int requestLimit = scenario ? 524288 : LIMIT;
+                if (request.getContentLengthLong() > requestLimit) {
+                    responses.error(response,413,"REQUEST_TOO_LARGE",scenario ? "Scenario request exceeds the 512 KiB limit." : experiment ? "Experiment request exceeds the 32 KiB limit." : "Connection settings exceed the 32 KiB request limit."); return;
                 }
                 chain.doFilter(new HttpServletRequestWrapper(request) {
                     private ServletInputStream bounded;
@@ -28,9 +31,9 @@ public class ConnectionBodyLimit {
                         var source = super.getInputStream();
                         bounded = new ServletInputStream() {
                             int consumed;
-                            private void count(int amount) throws IOException { if (amount > 0 && (consumed += amount) > LIMIT) throw new IOException("Connection request limit exceeded"); }
+                            private void count(int amount) throws IOException { if (amount > 0 && (consumed += amount) > requestLimit) throw new IOException("Request limit exceeded"); }
                             @Override public int read() throws IOException { int value=source.read(); count(value < 0 ? 0 : 1); return value; }
-                            @Override public int read(byte[] data,int offset,int length) throws IOException { int amount=source.read(data,offset,Math.min(length,LIMIT-consumed+1)); count(amount); return amount; }
+                            @Override public int read(byte[] data,int offset,int length) throws IOException { int amount=source.read(data,offset,Math.min(length,requestLimit-consumed+1)); count(amount); return amount; }
                             @Override public boolean isFinished() { return source.isFinished(); }
                             @Override public boolean isReady() { return source.isReady(); }
                             @Override public void setReadListener(ReadListener listener) { source.setReadListener(listener); }

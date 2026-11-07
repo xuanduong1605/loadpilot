@@ -34,6 +34,9 @@ management:
     health:
       show-details: never
 platform:
+  scenarios:
+    node-executable: ${SCENARIO_NODE_EXECUTABLE:}
+    validator-script: ${SCENARIO_VALIDATOR_SCRIPT:}
   username: ${PLATFORM_USER:admin}
   password: ${PLATFORM_PASSWORD:}
   connections:
