@@ -1,11 +1,9 @@
 import type { Metadata } from 'next';
-import { WorkspaceSection } from '../../../components/workspace-section';
+import { ScenarioEditor } from '../../../features/scenarios/scenario-editor';
+import { PageHeading } from '../../../components/console-ui';
 
 export const metadata: Metadata = { title: 'Scenarios | Loadpilot' };
 
 export default function ScenariosPage() {
-  return <WorkspaceSection title="Scenarios" description="Turn a real user journey into a repeatable load test."
-    icon="scenarios" heading="Every test needs a clear scenario">
-    Script editing is not available yet. This space will hold your k6 scripts, saved versions and approval history.
-  </WorkspaceSection>;
+  return <><PageHeading title="Scripts" description="Edit JavaScript, check syntax and approve each exact k6 script version." /><ScenarioEditor /></>;
 }

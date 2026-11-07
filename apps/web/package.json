@@ -7,7 +7,27 @@
     "build": "next build && node scripts/normalize-static-export.cjs",
     "typecheck": "next typegen && tsc --noEmit"
   },
-  "dependencies": { "next": "16.4.2", "react": "19.3.1", "react-dom": "19.3.1" },
-  "devDependencies": { "typescript": "5.9.3", "@types/node": "24.10.1", "@types/react": "19.2.2", "@types/react-dom": "19.2.2" },
-  "engines": { "node": ">=24 <25" }
+  "dependencies": {
+    "@codemirror/autocomplete": "6.20.4",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
+    "@lezer/highlight": "1.2.5",
+    "codemirror": "6.0.2",
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
 }
