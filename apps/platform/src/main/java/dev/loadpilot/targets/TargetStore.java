@@ -35,6 +35,11 @@ public class TargetStore {
         return database.query("SELECT * FROM registered_target WHERE id=?", mapper, id).stream().findFirst()
                 .orElseThrow(() -> new TargetProblem(404, "TARGET_NOT_FOUND", "System not found."));
     }
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public Target forReview(UUID id) {
+        return database.query("SELECT * FROM registered_target WHERE id=? FOR SHARE", mapper, id).stream().findFirst()
+                .orElseThrow(() -> new TargetProblem(404, "TARGET_NOT_FOUND", "System not found."));
+    }
 
     private void validate(TargetInput input) {
         try {
