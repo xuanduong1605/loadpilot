@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, mutate } from '../../lib/api';
-import { Button, Notice, TextField } from '../../components/form-controls';
+import { Button, Notice } from '../../components/form-controls';
 import { Icon } from '../../components/icon';
 import { StatusBadge } from '../../components/console-ui';
 import { TelemetryChart, type TelemetryPoint } from './telemetry-chart';
