@@ -55,6 +55,7 @@ export function ConnectionPanel({ target, onSaved, inspectOnMount = false }: { t
       if (result.targetId !== target.id || result.targetRevision !== target.revision || result.connectionRevision !== connection?.revision)
         throw new Error('This system or connection changed. Reload its details before inspecting again.');
       setSnapshot(result); setNow(Date.now());
+      window.dispatchEvent(new CustomEvent('loadpilot:inspection', { detail: { targetId: result.targetId, targetRevision: result.targetRevision, kubernetes: result.kubernetes.state, prometheus: result.prometheus.state, collectedAt: result.collectedAt } }));
       setHistory(previous => appendObservation(previous, result));
       if (result.kubernetes.state !== 'READY') setAuto(false);
     } catch (reason) { if (mounted.current) { setError(reason instanceof Error ? reason.message : 'Inspection failed.'); setAuto(false); } }
@@ -81,7 +82,7 @@ export function ConnectionPanel({ target, onSaved, inspectOnMount = false }: { t
   const unavailable = <span aria-label="Unavailable" title="No valid observation">—</span>;
   return <div className={styles.overview}>
     <div className={styles.controls}>
-      <p className={styles.checked}>{snapshot ? <>Last checked <time dateTime={snapshot.collectedAt}>{new Date(snapshot.collectedAt).toLocaleTimeString()}</time>{stale ? ' · Stale snapshot' : ''}</> : 'Connection not checked yet'}</p>
+      <p className={styles.checked}>{snapshot ? <>Last checked <time dateTime={snapshot.collectedAt}>{new Date(snapshot.collectedAt).toLocaleTimeString('en-GB', { timeZone: 'UTC' })}</time>{stale ? ' · Stale snapshot' : ''}</> : 'Connection not checked yet'}</p>
       <div className={styles.controlActions}>
         {connection && policy && <Button variant="secondary" onClick={() => { setAuto(false); setEditing(true); }}>{connection.revision ? 'Edit connection' : 'Set up connection'}</Button>}
         <Button busy={pending} disabled={!connection?.revision} aria-label="Refresh system data" onClick={() => void inspect()}><Icon name="refresh" width={14} height={14} />Refresh</Button>
@@ -100,7 +101,8 @@ export function ConnectionPanel({ target, onSaved, inspectOnMount = false }: { t
       <div className={styles.metric}><dt><Icon name="refresh" width={14} height={14} />Restarts</dt><dd>{summary?.restarts != null ? number(summary.restarts) : unavailable}</dd></div>
     </dl>
     <div className={styles.statusRow} aria-label="Connection status">
-      {statuses.map(({ name, value }) => <span key={name} className={styles.status} data-tone={tone(value)}>{name}<strong>{label(value)}</strong></span>)}
+      {statuses.map(({ name, value }) => <button key={name} type="button" className={styles.status} data-tone={tone(value)} disabled={!connection?.revision || pending} onClick={() => void inspect()} title="Refresh connection checks">{name === 'Monitoring' ? 'Prometheus' : name === 'Kubernetes' ? 'K8s API' : name}<strong>{label(value)}</strong></button>)}
+      <span className={styles.status} data-tone="neutral">Grafana <strong>Health check unavailable</strong></span>
     </div>
     <section className={styles.resourcePanel} aria-labelledby="resource-usage-title">
       <div className={styles.panelHeading}><div><h2 id="resource-usage-title">Resource usage</h2><p className={styles.chartScope}>Selected container · {metric === 'cpuMillicores' ? 'mCPU' : 'MiB'} · {history.length} observation{history.length === 1 ? '' : 's'} this visit</p></div>
@@ -113,14 +115,14 @@ export function ConnectionPanel({ target, onSaved, inspectOnMount = false }: { t
         <tbody>{snapshot.pods.map(pod => { const measured = validUsage(pod.usage, snapshot.collectedAt); return <tr key={pod.name}><th>{pod.name}<small className={styles.readiness} data-ready={pod.ready === true}>{pod.phase ?? 'Unknown'} · {pod.ready == null ? 'Readiness unavailable' : pod.ready ? 'Ready' : 'Not ready'}</small></th>
           <td>{number(measured ? pod.usage.cpuMillicores : null)}</td><td>{number(measured ? pod.usage.memoryBytes : null, 1048576)}</td><td>{number(pod.restarts)}</td>
           <td><small>CPU {number(pod.cpuRequestMillicores)} / {number(pod.cpuLimitMillicores)} mCPU</small><small>Memory {number(pod.memoryRequestBytes, 1048576)} / {number(pod.memoryLimitBytes, 1048576)} MiB</small></td>
-          <td>{state(pod.usage.state)}<small>{pod.usage.timestamp ? new Date(pod.usage.timestamp).toLocaleTimeString() : 'No sample time'} · {pod.usage.window ?? 'No window'}</small></td></tr>; })}</tbody></table></div>}
+          <td>{state(pod.usage.state)}<small>{pod.usage.timestamp ? new Date(pod.usage.timestamp).toLocaleTimeString('en-GB', { timeZone: 'UTC' }) : 'No sample time'} · {pod.usage.window ?? 'No window'}</small></td></tr>; })}</tbody></table></div>}
       {!snapshot?.pods.length && <p className={styles.emptyPods}>{snapshot ? 'No owned selected-container Pods are available in this inspection.' : 'Pod readiness and resources appear after a connection check.'}</p>}
     </section>
     <details className={styles.disclosure}>
       <summary>Connection diagnostics</summary>
       {!snapshot && <p className={styles.checked}>No inspection has run. Saving a connection does not prove that it is reachable.</p>}
       {!!connection?.revision && <p className={styles.chartScope}>Kubernetes endpoint: {connection.kubernetesUrl}</p>}
-      <div className={styles.diagnostics}>{checks.map(([name, check]) => check && <article key={name}><h3>{name}: {label(check.state)}</h3><p>{check.message}</p><small>Source: {check.source} · <time dateTime={check.checkedAt}>{new Date(check.checkedAt).toLocaleString()}</time></small></article>)}</div>
+      <div className={styles.diagnostics}>{checks.map(([name, check]) => check && <article key={name}><h3>{name}: {label(check.state)}</h3><p>{check.message}</p><small>Source: {check.source} · <time dateTime={check.checkedAt}>{new Date(check.checkedAt).toLocaleString('en-GB', { timeZone: 'UTC' })}</time></small></article>)}</div>
       {snapshot?.workload && <div className={styles.rollout}><span>Replicas: {number(snapshot.workload.readyReplicas)} ready / {number(snapshot.workload.desiredReplicas)} desired / {number(snapshot.workload.availableReplicas)} available</span><span>Updated replicas: {number(snapshot.workload.updatedReplicas)}</span><span>Generation: {number(snapshot.workload.observedGeneration)} observed / {number(snapshot.workload.generation)} desired</span></div>}
     </details>
   </div>;

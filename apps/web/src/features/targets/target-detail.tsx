@@ -54,7 +54,7 @@ export function TargetDetail() {
       {editing && <TargetForm key={`${target.id}:${target.revision}`} target={target} onSaved={saved} onCancel={() => setEditing(false)} />}
       {!editing && target.archivedAt && <p className={detail.archived}>This system is archived. Its identity and history are retained.</p>}
       {!editing && !target.archivedAt && <ConnectionPanel key={`${target.id}:${target.revision}`} target={target} inspectOnMount={query.get('check') === '1'} onSaved={() => void load()} />}
-      {!editing && <details className={`${detail.disclosure} ${detail.metadata}`}><summary>System settings</summary><dl className={detail.settings}><dt>API base URL</dt><dd>{target.baseUrl}</dd><dt>Updated</dt><dd><time dateTime={target.updatedAt}>{new Date(target.updatedAt).toLocaleString()}</time></dd></dl>
+      {!editing && <details className={`${detail.disclosure} ${detail.metadata}`}><summary>System settings</summary><dl className={detail.settings}><dt>API base URL</dt><dd>{target.baseUrl}</dd><dt>Updated</dt><dd><time dateTime={target.updatedAt}>{new Date(target.updatedAt).toLocaleString('en-GB', { timeZone: 'UTC' })}</time></dd></dl>
         {!target.archivedAt && <div className={styles.actions}><Button variant="danger" onClick={() => setConfirmArchive(true)}>Archive system</Button></div>}
       </details>}
       {confirmArchive && <section className={styles.panel} aria-label="Confirm archive"><h2>Archive this system?</h2><p>It will be hidden from the active list. Its identity and history will be retained.</p>

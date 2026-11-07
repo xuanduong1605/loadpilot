@@ -35,7 +35,7 @@ export function ResourceChart({ history, metric }: { history: ResourcePoint[]; m
   });
   if (current) segments.push(current);
   const format = (value: number) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
-  const time = (value: string) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, fractionalSecondDigits: last - first < 1000 ? 3 : undefined });
+  const time = (value: string) => new Date(value).toLocaleTimeString([], { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, fractionalSecondDigits: last - first < 1000 ? 3 : undefined });
   return <div ref={frame} className={styles.chart}>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={id}>
       <title id={id}>{metric === 'memoryBytes' ? 'Memory' : 'CPU'} usage in {unit}; {history.length} observation{history.length === 1 ? '' : 's'} collected this visit</title>

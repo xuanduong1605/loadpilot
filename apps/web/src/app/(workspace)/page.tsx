@@ -1,61 +1,40 @@
-﻿'use client';
+'use client';
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Icon, type IconName } from '../../components/icon';
+import { Icon } from '../../components/icon';
 import { Button, Notice } from '../../components/form-controls';
+import { PageHeading, StatusBadge } from '../../components/console-ui';
 import { api } from '../../lib/api';
 import type { TargetPage } from '../../features/targets/types';
-import styles from './overview.module.css';
-
-const steps: { title: string; description: string; href: string; icon: IconName; available: boolean }[] = [
-  { title: 'Register a system', description: 'Add an API and its Kubernetes workload.', href: '/targets/detail/?new=1', icon: 'target', available: true },
-  { title: 'Inspect connections', description: 'Check access, readiness and resource samples.', href: '/targets/', icon: 'chart', available: true },
-  { title: 'Prepare a scenario', description: 'Script editing and approval are coming next.', href: '/scenarios/', icon: 'scenarios', available: false },
-];
+import { SystemTable } from '../../features/targets/system-table';
+import { ExperimentHistory } from '../../features/experiments/experiment-history';
+import styles from '../../components/console-ui.module.css';
 
 export default function OverviewPage() {
   const [systems, setSystems] = useState<TargetPage>();
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   useEffect(() => {
-    let active = true;
-    setSystems(undefined); setError('');
-    void api<TargetPage>('/api/targets?offset=0&limit=4&includeArchived=false')
-      .then(value => { if (active) setSystems(value); })
-      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'Systems are unavailable.'); });
+    let active = true; setSystems(undefined); setError('');
+    void api<TargetPage>('/api/targets?offset=0&limit=4&includeArchived=false').then(value => { if (active) setSystems(value); })
+      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'Cannot load target apps.'); });
     return () => { active = false; };
   }, [retry]);
   return <>
-    <div className={styles.heading}>
-      <div><span className={styles.eyebrow}>PERFORMANCE WORKSPACE</span><h1>Overview</h1><p>Your systems, workload connections and performance evidence.</p></div>
-      <Link className={styles.primaryLink} href="/targets/detail/?new=1"><span aria-hidden="true">+</span> Register system</Link>
-    </div>
-    <section className={styles.summary} aria-label="Workspace summary">
-      <div><span>Active systems</span><strong>{systems ? systems.total : error ? 'Unavailable' : 'Loading…'}</strong><p>Registered applications</p></div>
-      <div><span>Workload inspection</span><strong className={styles.summaryLabel}><Icon name="eye" width={18} height={18} /> Read only</strong><p>Run a check from a system&apos;s details</p></div>
-      <div><span>Experiment execution</span><strong className={styles.summaryLabel}>Not available yet</strong><p>No run measurements to display</p></div>
+    <PageHeading title="Overview" description="From approved configuration to measured evidence. Every conclusion requires valid observations." actions={<><Link className={styles.secondary} href="/targets/detail/?new=1"><Icon name="plus" width={14} height={14} />Register target app</Link><Link className={styles.action} href="/experiments/"><Icon name="experiments" width={14} height={14} />Experiment Setup</Link></>} />
+    <dl className={styles.summary} aria-label="Workspace summary">
+      <div><dt>Registered target apps</dt><dd>{systems ? String(systems.total).padStart(2, '0') : '—'}</dd><small>{error ? 'Cannot load' : systems ? 'Active systems' : 'Loading…'}</small></div>
+      <div><dt>Active execution</dt><dd>— <StatusBadge>Unavailable</StatusBadge></dd><small>Run list unavailable</small></div>
+      <div><dt>SLO verdict</dt><dd>— <StatusBadge>Unevaluated</StatusBadge></dd><small>Never inferred from Job state</small></div>
+      <div><dt>Connection checks</dt><dd><Icon name="eye" width={22} height={22} /><StatusBadge tone="info">Read only</StatusBadge></dd><small>On demand · per target app</small></div>
+    </dl>
+    <ExperimentHistory targets={systems?.items} />
+    <section className={styles.panel} aria-labelledby="systems-title"><div className={styles.panelHead}><div><h2 id="systems-title">Target Apps</h2><p>APIs, Kubernetes workloads and monitoring connections.</p></div><Link href="/targets/">View all <Icon name="arrow" width={13} height={13} /></Link></div>
+      {error ? <div className={styles.body}><Notice title="Cannot load systems" tone="error">{error}</Notice><Button variant="secondary" onClick={() => setRetry(retry + 1)}>Try again</Button></div>
+        : !systems ? <div className={styles.body}><div className={styles.skeleton} role="status" aria-label="Loading systems" /></div>
+        : systems.items.length ? <SystemTable systems={systems.items} /> : <div className={styles.empty}><Icon name="server" width={26} height={26} /><h3>Connect your first target app</h3><p>Register an API and workload to configure connections and inspect readiness and resources.</p><Link href="/targets/detail/?new=1">Register target app</Link></div>}
+      <div className={styles.footnote}><span>Health is checked on demand, never inferred from saved configuration.</span><span>CPU · Memory · Pod readiness</span></div>
     </section>
-    <div className={styles.grid}>
-      <section className={styles.panel} aria-labelledby="systems-title">
-        <div className={styles.sectionTitle}><h2 id="systems-title">Registered systems</h2><Link href="/targets/">View all <Icon name="arrow" width={14} height={14} /></Link></div>
-        {error ? <div className={styles.feedback}><Notice title="Cannot load systems" tone="error">{error}</Notice><Button variant="secondary" onClick={() => setRetry(retry + 1)}>Try again</Button></div>
-          : !systems ? <p className={styles.feedback} role="status">Loading systems…</p>
-          : systems.items.length ? <div className={styles.systems}>{systems.items.map(target => <Link className={styles.system} key={target.id} href={`/targets/detail/?id=${target.id}`}>
-            <span className={styles.systemIcon}><Icon name="target" width={18} height={18} /></span><div><strong>{target.name}</strong><span>{target.namespace} / {target.deployment}</span></div><span className={styles.environment}>{target.environment.toLowerCase()}</span><Icon name="arrow" width={15} height={15} />
-          </Link>)}</div> : <div className={styles.empty}><span className={styles.emptyIcon}><Icon name="target" width={24} height={24} /></span><h3>Connect your first system</h3><p>Register an application to configure its connection and inspect its workload.</p><Link href="/targets/detail/?new=1">Register system <Icon name="arrow" width={14} height={14} /></Link></div>}
-        <div className={styles.panelFoot}><Icon name="eye" width={14} height={14} /> Connection health is checked on demand, per system.</div>
-      </section>
-      <section className={styles.panel} aria-labelledby="workflow-title">
-        <div className={styles.sectionTitle}><h2 id="workflow-title">Getting started</h2><span>WORKFLOW</span></div>
-        <ol className={styles.steps}>{steps.map((step, index) => <li key={step.title}><Link href={step.href}>
-          <span className={styles.stepNumber}>{index + 1}</span><div><strong>{step.title}{!step.available && <span className={styles.soon}>Planned</span>}</strong><p>{step.description}</p></div><Icon name="arrow" width={15} height={15} />
-        </Link></li>)}</ol>
-      </section>
-      <section className={`${styles.panel} ${styles.recent}`} aria-labelledby="recent-title">
-        <div className={styles.sectionTitle}><h2 id="recent-title">Recent experiments</h2><Link href="/experiments/">View experiments <Icon name="arrow" width={14} height={14} /></Link></div>
-        <div className={styles.recentEmpty}><span className={styles.emptyIcon}><Icon name="experiments" width={23} height={23} /></span><div><h3>No experiment results yet</h3><p>Execution is not available yet. Measured results will appear here when experiments are supported.</p></div></div>
-      </section>
-    </div>
   </>;
 }
