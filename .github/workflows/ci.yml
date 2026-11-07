@@ -56,6 +56,12 @@ jobs:
         run: |
           bash -n scripts/deploy-vps.sh
           shellcheck scripts/deploy-vps.sh
+          npm --prefix apps/platform/validator ci --ignore-scripts --no-audit --no-fund
+          npm --prefix apps/platform/validator test
+          validator_node="$(command -v node)"
+          export TEST_NODE_EXECUTABLE="$validator_node" SCENARIO_NODE_EXECUTABLE="$validator_node"
+          export TEST_VALIDATOR_SCRIPT="$GITHUB_WORKSPACE/apps/platform/validator/validate.cjs"
+          export SCENARIO_VALIDATOR_SCRIPT="$TEST_VALIDATOR_SCRIPT"
           mvn -f apps/platform/pom.xml -B -ntp verify
           npm --prefix apps/web ci --no-audit --no-fund
           npm --prefix apps/web run typecheck
