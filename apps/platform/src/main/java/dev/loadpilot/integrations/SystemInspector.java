@@ -29,13 +29,26 @@ public class SystemInspector {
         this.targets = targets; this.connections = connections; this.policy = policy; this.json = json;
     }
     public Inspection inspect(UUID id) {
+        return inspect(id,true);
+    }
+    /** Resource-only polling never probes the application URL or Prometheus readiness. */
+    public Inspection resources(UUID id) {
+        return inspect(id,false);
+    }
+    private Inspection inspect(UUID id,boolean includeProbes) {
         if (!capacity.tryAcquire()) throw new ConnectionProblem(429, "INSPECTION_BUSY", "The platform is checking other systems. Try again shortly.");
         try {
             Target target = targets.get(id);
             if (target.archivedAt() != null) throw ConnectionProblem.conflict();
-            Check api = probe(target.baseUrl(), "", "", false, "Registered API");
+            Check api = includeProbes ? probe(target.baseUrl(), "", "", false, "Registered API") : check("NOT_COLLECTED", "Application probing is not part of resource polling.", "Registered API", null);
             ConnectionStore.Material config;
-            try { config = connections.material(id); }
+            try {
+                if(includeProbes) config=connections.material(id);
+                else {
+                    var kube=connections.kubernetesMaterial(id);
+                    config=kube==null?null:new ConnectionStore.Material(kube.revision(),kube.url(),kube.ca(),kube.token(),"","","");
+                }
+            }
             catch (ConnectionProblem unavailable) {
                 Check failed = failure(unavailable, "Connection credentials");
                 return new Inspection(id, target.revision(), connections.view(id).revision(), Instant.now(), api, failed, failed, failed, null, List.of());
@@ -45,7 +58,8 @@ public class SystemInspector {
                 return new Inspection(id, target.revision(), 0, Instant.now(), api, missing, missing, missing, null, List.of());
             }
             var kube = kubernetes(target, config);
-            Check prom = config.prometheusUrl().isEmpty() ? check("NOT_CONFIGURED", "Prometheus is not configured.", "Prometheus", null)
+            Check prom = !includeProbes ? check("NOT_COLLECTED", "Prometheus readiness is not part of resource polling.", "Prometheus", null)
+                    : config.prometheusUrl().isEmpty() ? check("NOT_CONFIGURED", "Prometheus is not configured.", "Prometheus", null)
                     : prometheus(config, target.namespace());
             return new Inspection(id, target.revision(), config.revision(), Instant.now(), api, kube.state, kube.metrics, prom, kube.workload, kube.pods);
         } finally { capacity.release(); }

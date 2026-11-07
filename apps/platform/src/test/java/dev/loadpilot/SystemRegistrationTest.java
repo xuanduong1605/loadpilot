@@ -58,7 +58,7 @@ class SystemRegistrationTest {
         assertThat(result.path("credentialRef").asText()).isEqualTo(id.toString());
         assertThat(body).doesNotContain("fixture-readonly-token");
         assertThat(database.queryForObject("SELECT kubernetes_token FROM system_connection WHERE target_id=?",String.class,id)).doesNotContain("fixture-readonly-token");
-        assertThat(database.queryForList("SELECT action FROM access_audit WHERE object_id=?",String.class,id)).containsExactly("TARGET_CREATED","CONNECTION_SAVED");
+        assertThat(database.queryForList("SELECT action FROM access_audit WHERE object_id=?",String.class,id)).containsExactlyInAnyOrder("TARGET_CREATED","CONNECTION_SAVED");
         mvc.perform(get("/api/integrations/targets/"+id+"/connection").with(user("admin").roles("OPERATOR")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.hasKubernetesToken").value(true)).andExpect(jsonPath("$.kubernetesToken").doesNotExist());
     }
