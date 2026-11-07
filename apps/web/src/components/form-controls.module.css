@@ -1,9 +1,9 @@
-.button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 9px 14px; border: 1px solid transparent; border-radius: var(--radius-md); background: var(--primary); color: white; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: var(--shadow); }
-.button:hover:not(:disabled) { background: var(--primary-hover); }
+.button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 9px 14px; border: 1px solid transparent; border-radius: var(--radius-md); background: var(--action); color: white; font-size: 12px; font-weight: 500; cursor: pointer; box-shadow: var(--shadow); }
+.button:hover:not(:disabled) { background: var(--action-hover); }
 .secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
 .secondary:hover:not(:disabled) { background: var(--canvas); border-color: var(--muted); }
 .danger { background: var(--surface); color: var(--danger); border-color: var(--line); }
-.danger:hover:not(:disabled) { background: #FEF2F2; border-color: #FECACA; }
+.danger:hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger); }
 .button:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 .field { display: grid; gap: 8px; min-width: 0; }
 .field label { font-size: 12px; font-weight: 500; }
@@ -14,10 +14,10 @@
 .hint, .error { font-size: 12px; line-height: 1.6; }
 .hint { color: var(--muted); }
 .error { color: var(--danger); }
-.notice { border: 1px solid #DBEAFE; border-radius: var(--radius-md); background: var(--primary-soft); padding: 14px 16px; }
+.notice { border: 1px solid #2b4363; border-radius: var(--radius-md); background: var(--primary-soft); padding: 12px 14px; }
 .notice strong { display: block; font-size: 12px; font-weight: 600; }
 .notice p { margin: 5px 0 0; font-size: 12px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
-.noticeError { border-color: #FECACA; background: #FEF2F2; color: var(--danger); }
+.noticeError { border-color: #63333f; background: var(--danger-soft); color: var(--danger); }
 .noticeError p { color: var(--danger); }
 .spinner { width: 15px; height: 15px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

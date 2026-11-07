@@ -1,7 +1,16 @@
 import type { SVGProps } from 'react';
 
 const paths = {
+  activity: 'M3 12h4l3-8 4 16 3-8h4',
+  download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
+  stop: 'M5 5h14v14H5Z',
+  clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4v5l3 2',
   arrow: 'M5 12h14m-6-6 6 6-6 6',
+  chevron: 'm9 5 7 7-7 7',
+  panel: 'M3 3h18v18H3Zm6 0v18',
+  plus: 'M12 5v14M5 12h14',
+  search: 'M21 21l-5-5M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14',
+  server: 'M3 3h18v7H3Zm0 11h18v7H3ZM7 6.5h.01M7 17.5h.01',
   chart: 'M4 19h16M7 15v-4m5 4V5m5 10V8',
   check: 'm5 12 4 4L19 6',
   compare: 'M8 4v16m8-16v16M4 8h8m0 8h8',

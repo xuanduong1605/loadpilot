@@ -1,9 +1,9 @@
-.page { min-height: 100dvh; display: grid; place-items: center; padding: 40px 20px; }
+.page { min-height: 100dvh; display: grid; place-items: center; padding: 40px 20px; background: var(--canvas); }
 .formSide { width: 100%; max-width: 400px; }
 .formSide:focus { outline: none; }
 .brand { display: flex; width: fit-content; align-items: center; gap: 10px; margin: 0 auto 28px; color: var(--ink); font-weight: 700; font-size: 23px; letter-spacing: -.8px; text-decoration: none; }
 .brandMark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--primary); color: white; }
-.formContainer { padding: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+.formContainer { padding: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 40px rgb(24 24 27 / 4%), var(--shadow); }
 .formHeading { margin-bottom: 26px; }
 .formHeading h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: -.6px; font-weight: 600; }
 .formHeading p { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0; }
