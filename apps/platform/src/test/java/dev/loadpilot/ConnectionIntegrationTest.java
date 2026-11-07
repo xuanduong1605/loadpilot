@@ -28,11 +28,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.username=${TEST_DATABASE_USER:loadpilot_test}","spring.datasource.password=${TEST_DATABASE_PASSWORD}"})
 @AutoConfigureMockMvc @WithMockUser(username="admin",roles="OPERATOR") @Transactional
 class ConnectionIntegrationTest {
+    @Autowired dev.loadpilot.integrations.ConnectionStore connections;
     @Autowired MockMvc mvc; @Autowired TargetStore targets; @Autowired JdbcTemplate database; @Autowired ObjectMapper json;
     @MockitoSpyBean TargetAudit audit;
     @Autowired @org.springframework.beans.factory.annotation.Qualifier("connectionRequestLimit")
     org.springframework.boot.web.servlet.FilterRegistrationBean<org.springframework.web.filter.OncePerRequestFilter> bodyLimit;
     Target create() { return targets.create(new TargetInput("Connection fixture " + java.util.UUID.randomUUID(),"https://fixture.example.invalid","STAGING","fixture","fixture-api","api",null,null,null),"admin"); }
+    @Test void kubernetesMaterialDecryptsOnlyRequiredCredentialAndRedactsDisplay() throws Exception {
+        var target=create();
+        mvc.perform(put("/api/integrations/targets/"+target.id()+"/connection").with(csrf()).contentType("application/json").content(input(0,1).toString())).andExpect(status().isOk());
+        database.update("UPDATE system_connection SET prometheus_token='unreadable-unused-fixture' WHERE target_id=?",target.id());
+        var material=connections.kubernetesMaterial(target.id());
+        assertThat(material.revision()).isEqualTo(1);assertThat(material.token()).isEqualTo("fixture-readonly-token");
+        assertThat(material.url()).isEqualTo("https://127.0.0.1:18443");assertThat(material.toString()).doesNotContain("fixture-readonly-token");
+    }
     ObjectNode input(long revision,long targetRevision) { return json.createObjectNode().put("revision",revision).put("targetRevision",targetRevision)
             .put("kubernetesUrl","https://127.0.0.1:18443").put("kubernetesCa","").put("kubernetesToken","fixture-readonly-token")
             .put("prometheusUrl","").put("prometheusCa","").put("prometheusToken","").put("readOnlyAcknowledged",true); }

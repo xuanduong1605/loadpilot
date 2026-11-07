@@ -34,6 +34,17 @@ management:
     health:
       show-details: never
 platform:
+  execution:
+    monitor-enabled: ${EXECUTION_MONITOR_ENABLED:false}
+    cluster-grants-json: ${EXECUTION_CLUSTER_GRANTS_JSON:}
+    destinations-json: ${EXECUTION_DESTINATIONS_JSON:}
+    runtime-policy-json: ${EXECUTION_RUNTIME_POLICY_JSON:}
+    runtime-evidence-directory: ${EXECUTION_RUNTIME_EVIDENCE_DIRECTORY:}
+    runtime-evidence-keys-json: ${EXECUTION_RUNTIME_EVIDENCE_KEYS_JSON:}
+    runtime-evidence-max-validity-seconds: ${EXECUTION_RUNTIME_EVIDENCE_MAX_VALIDITY_SECONDS:900}
+    runtime-cni-namespace: ${EXECUTION_RUNTIME_CNI_NAMESPACE:}
+    runtime-cni-daemonset: ${EXECUTION_RUNTIME_CNI_DAEMONSET:}
+    runtime-probe-archive-directory: ${EXECUTION_RUNTIME_PROBE_ARCHIVE_DIRECTORY:}
   scenarios:
     node-executable: ${SCENARIO_NODE_EXECUTABLE:}
     validator-script: ${SCENARIO_VALIDATOR_SCRIPT:}

@@ -49,6 +49,13 @@ public class ConnectionStore {
         return new Material(stored.revision, stored.kubeUrl, stored.kubeCa, cipher.open(stored.kubeToken, id + ":kube"),
                 stored.promUrl, stored.promCa, stored.promToken.isEmpty() ? "" : cipher.open(stored.promToken, id + ":prom"));
     }
+    public record KubernetesMaterial(long revision,String url,String ca,String token) {
+        @Override public String toString() { return "KubernetesMaterial[credentials=redacted]"; }
+    }
+    public KubernetesMaterial kubernetesMaterial(UUID id) {
+        Stored stored=read(id);
+        return stored==null?null:new KubernetesMaterial(stored.revision,stored.kubeUrl,stored.kubeCa,cipher.open(stored.kubeToken,id+":kube"));
+    }
     private void certificate(String value) {
         if (value.isBlank()) return;
         // CA fields are returned as public metadata; never accept private-key or kubeconfig material here.
