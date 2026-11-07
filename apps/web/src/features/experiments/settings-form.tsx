@@ -1,0 +1,192 @@
+'use client';
+
+import { useEffect, useState, type FormEvent } from 'react';
+import { Button, Notice, TextField } from '../../components/form-controls';
+import { api, mutate } from '../../lib/api';
+import type { TargetPage } from '../targets/types';
+import styles from './settings.module.css';
+import { ExperimentReview, type Draft } from './experiment-review';
+import { LoadProfileEditor, encodeProfile, profileValues } from './load-profile';
+import { SloPolicyEditor, encodeSlo, sloValues } from './slo-policy';
+
+const fields = [
+  ['minimumRate', 'Minimum load (iterations/s)', 1, 10000, 1],
+  ['maximumRate', 'Maximum load (iterations/s)', 1, 10000, 1],
+  ['durationSeconds', 'Run duration including warm-up (seconds)', 1, 3600, 1],
+  ['warmupSeconds', 'Warm-up excluded from measurement (seconds)', 0, 3599, 1],
+  ['p95LatencyMs', 'Maximum p95 latency (milliseconds)', 1, 600000, 1],
+  ['maximumErrorRatio', 'Maximum error ratio (0–1)', 0, 1, 0.001],
+  ['repetitions', 'Repetitions per tested load', 1, 20, 1],
+  ['maximumRuns', 'Maximum total attempts (including retries)', 1, 100, 1],
+  ['totalBudgetSeconds', 'Total time budget (seconds)', 1, 86400, 1],
+] as const;
+const executionFields = [
+  ['precisionIterationsPerSecond', 'Search precision (iterations/s)', 1, 10000],
+  ['preAllocatedVUs', 'Preallocated virtual users', 1, 1000],
+  ['maximumVUs', 'Maximum virtual users', 1, 1000],
+  ['workerCount', 'Worker count (single worker supported)', 1, 1],
+  ['generatorCpuMillicores', 'Generator CPU limit (millicores)', 50, 4000],
+  ['generatorMemoryMiB', 'Generator memory limit (MiB)', 64, 4096],
+  ['requestTimeoutMs', 'Per-request timeout (milliseconds)', 1, 120000],
+  ['startupTimeoutSeconds', 'Worker startup timeout (seconds)', 1, 300],
+  ['gracefulStopSeconds', 'Graceful stop allowance (seconds)', 0, 60],
+  ['maximumAttemptsPerRun', 'Maximum attempts per run (including first)', 1, 3],
+] as const;
+
+type Review = { valid: boolean; errors: string[]; maximumAttemptSeconds: number; reservedAttemptsPerLoad: number };
+type ScenarioPage = { items: { id: string; name: string; latestVersion: number }[]; total: number };
+type ScriptVersion = { name: string; sha256: string; approved: boolean };
+
+export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: string) => void }) {
+  const [review, setReview] = useState<Review>();
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState<Draft>();
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [executionValues, setExecutionValues] = useState<Record<string, string>>({});
+  const [profile, setProfile] = useState(profileValues());
+  const [slo, setSlo] = useState(sloValues());
+  const [targetId, setTargetId] = useState('');
+  const [targets, setTargets] = useState<TargetPage>();
+  const [offset, setOffset] = useState(0);
+  const [targetRetry, setTargetRetry] = useState(0);
+  const [targetError, setTargetError] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [scenarioId, setScenarioId] = useState('');
+  const [scenarioVersion, setScenarioVersion] = useState('');
+  const [scenarios, setScenarios] = useState<ScenarioPage>();
+  const [scenarioOffset, setScenarioOffset] = useState(0);
+  const [scenarioRetry, setScenarioRetry] = useState(0);
+  const [scenarioError, setScenarioError] = useState('');
+  const [script, setScript] = useState<ScriptVersion>();
+  const [scriptError, setScriptError] = useState('');
+  useEffect(() => {
+    let active = true; setScenarios(undefined); setScenarioError('');
+    void api<ScenarioPage>(`/api/scenarios?offset=${scenarioOffset}&limit=12`).then(value => { if (active) setScenarios(value); })
+      .catch(reason => { if (active) setScenarioError(reason.message); });
+    return () => { active = false; };
+  }, [scenarioOffset, scenarioRetry]);
+  useEffect(() => {
+    let active = true; setScript(undefined); setScriptError('');
+    if (scenarioId && Number.isInteger(Number(scenarioVersion)) && Number(scenarioVersion) > 0) {
+      void api<ScriptVersion>(`/api/scenarios/${encodeURIComponent(scenarioId)}/versions/${encodeURIComponent(scenarioVersion)}`)
+        .then(value => { if (active) setScript(value); }).catch(reason => { if (active) setScriptError(reason.message); });
+    }
+    return () => { active = false; };
+  }, [scenarioId, scenarioVersion]);
+  useEffect(() => {
+    let active = true;
+    setTargets(undefined); setTargetError('');
+    void api<TargetPage>(`/api/targets?offset=${offset}&limit=12`)
+      .then(value => { if (active) setTargets(value); })
+      .catch(reason => { if (active) setTargetError(reason.message); });
+    return () => { active = false; };
+  }, [offset, targetRetry]);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('draft');
+    if (!id) return;
+    let active = true;
+    setBusy(true);
+    void api<Draft>(`/api/experiments/drafts/${encodeURIComponent(id)}`)
+      .then(value => {
+        if (!active) return;
+        setDraft(value); setTargetId(value.targetId);
+        setScenarioId(value.scenarioId ?? ''); setScenarioVersion(value.scenarioVersion ? String(value.scenarioVersion) : ''); setDirty(false);
+        setValues(Object.fromEntries(Object.entries(value.settings).map(([key, number]) => [key, String(number)])));
+        setExecutionValues(Object.fromEntries(Object.entries(value.executionBounds ?? {}).map(([key, number]) => [key, number == null ? '' : String(number)])));
+        setProfile(profileValues(value.loadProfile));
+        setSlo(sloValues(value.sloPolicy));
+      }).catch(reason => { if (active) setError(reason.message); })
+      .finally(() => { if (active) setBusy(false); });
+    return () => { active = false; };
+  }, []);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (reviewBusy) return;
+    const data = new FormData(event.currentTarget);
+    const settings = Object.fromEntries(fields.map(([key]) => [key, Number(data.get(key))]));
+    const executionBounds = Object.fromEntries(executionFields.map(([key]) => [key, key === 'precisionIterationsPerSecond' && profile.mode === 'SINGLE_RUN' ? null : Number(data.get(key))]));
+    const loadProfile = encodeProfile(profile, settings.durationSeconds);
+    const sloPolicy = encodeSlo(slo, settings);
+    const save = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'save';
+    setBusy(true); setError(''); setReview(undefined); setSaved(false);
+    try {
+      if (save) {
+        const value = await mutate<Draft>(draft ? `/api/experiments/drafts/${draft.id}` : '/api/experiments/drafts', draft ? 'PUT' : 'POST',
+          { targetId, settings, executionBounds, loadProfile, sloPolicy, revision: draft?.revision, scenarioId: scenarioId || null, scenarioVersion: scenarioVersion ? Number(scenarioVersion) : null });
+        setDraft(value); setSaved(true); setDirty(false);
+        window.history.replaceState(null, '', `/experiments/?draft=${encodeURIComponent(value.id)}`);
+      } else setReview(await mutate<Review>('/api/experiments/settings/validate-effective', 'POST', { settings, executionBounds, loadProfile, sloPolicy }));
+    }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Cannot validate settings.'); }
+    finally { setBusy(false); }
+  }
+  return <><form className={styles.form} onSubmit={submit} onChange={() => { setReview(undefined); setError(''); setSaved(false); setDirty(true); }}>
+    <p>Configure a bounded single-run profile or adaptive steady-load trials. Iterations/s equals HTTP requests/s only when each iteration sends exactly one request.</p>
+    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
+      <legend>Load, SLO and budgets</legend>
+      <label htmlFor="experiment-system">System</label>
+      <select id="experiment-system" value={targetId} onChange={event => setTargetId(event.target.value)}>
+        <option value="">Choose a registered system</option>
+        {targetId && !targets?.items.some(target => target.id === targetId) && <option value={targetId}>Selected system ({targetId})</option>}
+        {targets?.items.map(target => <option key={target.id} value={target.id}>{target.name} ({target.environment})</option>)}
+      </select>
+      {!targets && !targetError && <p role="status">Loading systems…</p>}
+      {targetError && <><Notice title="Cannot load systems" tone="error">{targetError}</Notice><Button onClick={() => setTargetRetry(value => value + 1)}>Retry systems</Button></>}
+      {targets && <div><Button variant="secondary" disabled={!offset} onClick={() => setOffset(value => Math.max(0, value - 12))}>Previous systems</Button>{' '}
+        <Button variant="secondary" disabled={offset + 12 >= targets.total} onClick={() => setOffset(value => value + 12)}>Next systems</Button>
+        <p>{targets.total ? `Systems ${offset + 1}–${Math.min(offset + 12, targets.total)} of ${targets.total}` : 'Register a system before saving a draft.'}</p></div>}
+      <label htmlFor="experiment-scenario">Scenario</label>
+      <select id="experiment-scenario" value={scenarioId} onChange={event => {
+        setScenarioId(event.target.value); setScenarioVersion(String(scenarios?.items.find(item => item.id === event.target.value)?.latestVersion ?? ''));
+      }}>
+        <option value="">Choose a scenario (required for finalization)</option>
+        {scenarioId && !scenarios?.items.some(item => item.id === scenarioId) && <option value={scenarioId}>Selected scenario ({scenarioId})</option>}
+        {scenarios?.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+      </select>
+      {!scenarios && !scenarioError && <p role="status">Loading scenarios…</p>}
+      {scenarioError && <><Notice title="Cannot load scenarios" tone="error">{scenarioError}</Notice><Button onClick={() => setScenarioRetry(value => value + 1)}>Retry scenarios</Button></>}
+      {scenarios && <div><Button variant="secondary" disabled={!scenarioOffset} onClick={() => setScenarioOffset(value => Math.max(0, value - 12))}>Previous scenarios</Button>{' '}
+        <Button variant="secondary" disabled={scenarioOffset + 12 >= scenarios.total} onClick={() => setScenarioOffset(value => value + 12)}>Next scenarios</Button></div>}
+      <TextField id="experiment-scenario-version" label="Exact script version" type="number" min={1} step={1} required={!!scenarioId} disabled={!scenarioId}
+        value={scenarioVersion} onChange={event => setScenarioVersion(event.target.value)} />
+      {scriptError && <Notice title="Cannot load script version" tone="error">{scriptError}</Notice>}
+      {script && <p>{script.name} · {script.approved ? 'Approved saved version' : 'Unapproved saved version'}<br />SHA-256: <code>{script.sha256}</code></p>}
+      <a href={scenarioId ? `/scenarios/?id=${encodeURIComponent(scenarioId)}&version=${encodeURIComponent(scenarioVersion)}` : '/scenarios/'}>Edit or approve scenario</a>
+      <div className={styles.boundFields}>{fields.filter(([key]) => key !== 'p95LatencyMs' && key !== 'maximumErrorRatio').map(([key, label, min, max, step]) => <TextField key={key} id={key} name={key} label={label} type="number" required min={min} max={max} step={step}
+        value={values[key] ?? ''} onChange={event => setValues(previous => ({ ...previous, [key]: event.target.value }))} />)}</div>
+    </fieldset>
+    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
+      <legend>SLO policy</legend>
+      <SloPolicyEditor value={slo} onChange={value => { setSlo(value); setDirty(true); setSaved(false); setReview(undefined); }}
+        latencyThreshold={values.p95LatencyMs ?? ''} errorRatio={values.maximumErrorRatio ?? ''}
+        onLatency={value => setValues(previous => ({ ...previous, p95LatencyMs: value }))} onError={value => setValues(previous => ({ ...previous, maximumErrorRatio: value }))} />
+      {draft && !draft.sloPolicy && <Notice title="SLO review needed">Choose an explicit percentile and throughput condition before creating a new review of this older draft.</Notice>}
+      {draft?.sloPolicy && draft.sloPolicy.resourceConditions == null && <Notice title="Resource SLO review needed">Choose target resource conditions or explicitly leave them unconfigured before creating a new review.</Notice>}
+    </fieldset>
+    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
+      <legend>Load profile and measurement</legend>
+      <LoadProfileEditor value={profile} onChange={value => { setProfile(value); setDirty(true); setSaved(false); setReview(undefined); }} />
+      {draft && !draft.loadProfile && <Notice title="Load profile needed">This older draft has no explicit load profile. Choose and save one before creating a new review.</Notice>}
+    </fieldset>
+    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
+      <legend>Generator and execution limits</legend>
+      <p>Resources apply to the load generator. Startup, shutdown and retries consume the attempt/time budgets. Enter each limit explicitly.</p>
+      <div className={styles.boundFields}>{executionFields.filter(([key]) => key !== 'precisionIterationsPerSecond' || profile.mode !== 'SINGLE_RUN').map(([key, label, min, max]) => <TextField key={key} id={key} name={key} label={label} type="number" required min={min} max={max} step={1}
+        value={executionValues[key] ?? ''} onChange={event => setExecutionValues(previous => ({ ...previous, [key]: event.target.value }))} />)}</div>
+      {draft && !draft.executionBounds && <Notice title="Execution limits needed">This older draft has no recorded execution limits. Complete these fields and save a new revision before reviewing it.</Notice>}
+    </fieldset>
+    <p>Latency and error ratio must stay at or below their limits. Configured throughput must be at or above its threshold. Missing required evidence yields Insufficient data.</p>
+    <div className={styles.actions}><Button type="submit" busy={busy} disabled={reviewBusy}>Validate settings</Button>
+    <Button type="submit" name="action" value="save" disabled={busy || reviewBusy || !targetId}>Save draft</Button>
+    <Button disabled title="Runtime checks and execution are not implemented">Start experiment</Button>
+    </div>
+    {error && <Notice title="Validation unavailable" tone="error">{error}</Notice>}
+    {saved && <Notice title="Draft saved">Revision {draft?.revision}. Bookmark this page to reopen the saved settings. Saving does not approve or start a load test.</Notice>}
+    {draft && <p>Draft {draft.id}, revision {draft.revision}. <a href={`/experiments/?draft=${encodeURIComponent(draft.id)}`}>Reload saved draft</a></p>}
+    {review && (review.valid ? <Notice title="Settings validated">These inputs satisfy the current validation rules. Each attempt has a {review.maximumAttemptSeconds} s ceiling; {review.reservedAttemptsPerLoad} attempts are reserved per tested load. They have not been saved or approved for execution.</Notice>
+      : <Notice title="Review settings" tone="error">{review.errors.join(' ')}</Notice>)}
+  </form>{draft && <ExperimentReview draft={draft} dirty={dirty || busy} onFinalized={onFinalized} onBusyChange={setReviewBusy} />}</>;
+}
