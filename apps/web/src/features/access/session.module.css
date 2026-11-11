@@ -5,7 +5,7 @@
 .accountMenu { position: absolute; z-index: 20; top: calc(100% + 10px); right: 0; width: 220px; max-width: calc(100vw - 40px); padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 8px 28px rgb(15 23 42 / 12%); }
 .menuIdentity { padding: 10px 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .menuItem { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; border: 0; border-radius: var(--radius-sm); padding: 10px 12px; background: transparent; color: var(--ink); text-decoration: none; text-align: left; font-size: 13px; cursor: pointer; }
-.menuItem:hover, .menuItem:focus-visible { background: var(--canvas); }
+.menuItem:hover, .menuItem:focus-visible { background: var(--surface-hover); }
 .menuSeparator { height: 1px; background: var(--line); margin: 6px; }
 .signOut { color: var(--danger); }
 .preferences { width: 420px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 24px; background: var(--surface); color: var(--ink); box-shadow: 0 16px 48px rgb(15 23 42 / 16%); }

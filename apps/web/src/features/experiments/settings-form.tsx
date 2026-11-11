@@ -137,7 +137,6 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
   }
   return <><nav className={styles.steps} aria-label="Setup steps">{stepNames.map((name, index) => <button key={name} type="button" aria-current={step === index ? 'step' : undefined} onClick={() => goToStep(index)}>{index + 1}. {name}</button>)}</nav><form noValidate className={styles.form} onSubmit={event => { if (step !== 4) { event.preventDefault(); goToStep(step + 1); } else void submit(event); }} onChange={() => { setReview(undefined); setError(''); setSaved(false); setDirty(true); }}>
     <h2 ref={stepHeading} tabIndex={-1} className={styles.stepHeading}>{stepNames[step]}</h2>
-    <p>Configure a bounded single-run profile or adaptive steady-load trials. Iterations/s equals HTTP requests/s only when each iteration sends exactly one request.</p>
     <div data-setup-step={0} hidden={step !== 0}>    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
       <legend>Choose a target and approved script</legend>
       <label htmlFor="experiment-system">System</label>
@@ -181,6 +180,7 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
     </div>
     <div data-setup-step={2} hidden={step !== 2}>    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
       <legend>Load profile and measurement</legend>
+      <p>Iterations/s equals HTTP requests/s only when each iteration sends exactly one request.</p>
       <LoadProfileEditor value={profile} onChange={value => { setProfile(value); setDirty(true); setSaved(false); setReview(undefined); }} />
       {draft && !draft.loadProfile && <Notice title="Load profile needed">This older draft has no explicit load profile. Choose and save one before creating a new review.</Notice>}
       <div className={styles.boundFields}>{fields.filter(([key]) => key !== 'p95LatencyMs' && key !== 'maximumErrorRatio').map(([key, label, min, max, step]) => <TextField key={key} id={key} name={key} label={label} type="number" required min={min} max={max} step={step}
@@ -189,23 +189,22 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
     </div>
     <div data-setup-step={3} hidden={step !== 3}>    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
       <legend>Generator and execution limits</legend>
-      <p>Resources apply to the load generator. Startup, shutdown and retries consume the attempt/time budgets. Enter each limit explicitly.</p>
+      <p>Resources apply to the load generator. Startup, shutdown and retries consume the attempt and time budgets.</p>
       <div className={styles.boundFields}>{executionFields.filter(([key]) => key !== 'precisionIterationsPerSecond' || profile.mode !== 'SINGLE_RUN').map(([key, label, min, max]) => <TextField key={key} id={key} name={key} label={label} type="number" required min={min} max={max} step={1}
         value={executionValues[key] ?? ''} onChange={event => setExecutionValues(previous => ({ ...previous, [key]: event.target.value }))} />)}</div>
       {draft && !draft.executionBounds && <Notice title="Execution limits needed">This older draft has no recorded execution limits. Complete these fields and save a new revision before reviewing it.</Notice>}
     </fieldset>
     </div>
     <div hidden={step !== 4}><h3>Review your configuration</h3><dl className={styles.details}><dt>Target</dt><dd>{targets?.items.find(item => item.id === targetId)?.name ?? (targetId || 'Not selected')}</dd><dt>Script</dt><dd>{script ? script.name + ' · version ' + scenarioVersion : 'Not selected'}</dd>{fields.map(([key, label]) => <div key={key} className={styles.reviewRow}><dt>{label}</dt><dd>{values[key] || 'Not entered'}</dd></div>)}{executionFields.map(([key, label]) => <div key={key} className={styles.reviewRow}><dt>{label}</dt><dd>{executionValues[key] || (key === 'precisionIterationsPerSecond' && profile.mode === 'SINGLE_RUN' ? 'Not applicable' : 'Not entered')}</dd></div>)}</dl>
-    <p>Latency and error ratio must stay at or below their limits. Configured throughput must be at or above its threshold. Missing required evidence yields Insufficient data.</p>
     <div className={styles.actions}><Button type="submit" busy={busy} disabled={reviewBusy}>Validate settings</Button>
     <Button type="submit" name="action" value="save" disabled={busy || reviewBusy || !targetId}>Save draft</Button>
     <Button disabled title="Runtime checks and execution are not implemented">Start experiment</Button>
     </div>
     </div>
     {error && <Notice title="Validation unavailable" tone="error">{error}</Notice>}
-    {saved && <Notice title="Draft saved">Revision {draft?.revision}. Bookmark this page to reopen the saved settings. Saving does not approve or start a load test.</Notice>}
+    {saved && <Notice title="Draft saved">Bookmark this page to reopen the saved settings. Saving does not approve or start a load test.</Notice>}
     {draft && <p>Draft {draft.id}, revision {draft.revision}. <a href={`/experiments/?draft=${encodeURIComponent(draft.id)}`}>Reload saved draft</a></p>}
-    {review && (review.valid ? <Notice title="Settings validated">These inputs satisfy the current validation rules. Each attempt has a {review.maximumAttemptSeconds} s ceiling; {review.reservedAttemptsPerLoad} attempts are reserved per tested load. They have not been saved or approved for execution.</Notice>
+    {review && (review.valid ? <Notice title="Settings validated">Each attempt has a {review.maximumAttemptSeconds} s ceiling. The budget reserves {review.reservedAttemptsPerLoad} attempts per tested load. Validation does not save or approve inputs.</Notice>
       : <Notice title="Review settings" tone="error">{review.errors.join(' ')}</Notice>)}
     <div className={styles.stepActions}><Button variant="secondary" disabled={step === 0 || busy || reviewBusy} onClick={() => goToStep(step - 1)}>Back</Button><span>Step {step + 1} of {stepNames.length}</span>{step < 4 && <Button disabled={busy || reviewBusy} onClick={() => goToStep(step + 1)}>Continue</Button>}</div>
   </form><div hidden={step !== 4}>{draft && <ExperimentReview draft={draft} dirty={dirty || busy} onFinalized={onFinalized} onBusyChange={setReviewBusy} />}</div></>;

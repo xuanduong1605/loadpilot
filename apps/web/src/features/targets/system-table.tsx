@@ -34,6 +34,6 @@ export function SystemTable({ systems, filterable = false }: { systems: Target[]
           <td><Link className={styles.open} href={`/targets/detail/?id=${system.id}`} aria-label={`Inspect ${system.name}`}><Icon name="chevron" width={16} height={16} /></Link></td>
         </tr>)}</tbody>
       </table>
-    </div> : <div className={styles.noMatches}><Icon name="search" width={24} height={24} /><h3>No matching systems on this page</h3><p>Try another name, workload or environment, or clear your filters.</p><Button variant="secondary" onClick={clear}>Clear filters</Button></div>}
+    </div> : <div className={styles.noMatches}><Icon name="search" width={24} height={24} /><h3>No matching systems on this page</h3><p>Try another name, workload or environment.</p><Button variant="secondary" onClick={clear}>Clear filters</Button></div>}
   </>;
 }

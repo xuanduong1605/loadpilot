@@ -17,9 +17,9 @@ export function ExperimentWorkspace({ screen = 'history' }: { screen?: Experimen
   const router = useRouter();
   const snapshotId = query.get('snapshot');
   const current = query.get('view') === 'live' ? 'monitor' : snapshotId ? 'review' : query.get('draft') ? 'setup' : screen;
-  const titles = { history: ['Experiments', 'Open a known run or configure a new bounded experiment.'], setup: ['New experiment', 'Prepare your target, load and limits one step at a time.'], review: ['Input review', 'Inspect the exact saved inputs before any execution.'], monitor: ['Run monitor', 'Follow an existing run and request a stop when needed.'], compare: ['Compare & export', 'Compare saved inputs.'], assistance: ['Planning tools', 'Optional assistance is separate from manual configuration.'] };
+  const titles = { history: 'Experiments', setup: 'New experiment', review: 'Input review', monitor: 'Run monitor', compare: 'Compare & export', assistance: 'Planning tools' };
   return <>
-    <PageHeading title={titles[current][0]} description={titles[current][1]} />
+    <PageHeading title={titles[current]} />
     <ExperimentNavigation screen={current} />
     {current === 'history' && <><div className={styles.actions}><Link href="/experiments/new/">Create experiment</Link><Link href="/experiments/review/">Open saved inputs</Link></div><ExperimentHistory /></>}
     {current === 'monitor' && <LiveMonitor />}

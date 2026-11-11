@@ -28,7 +28,7 @@
 .chartScope { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
 .metricSwitch { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--canvas); }
 .metricSwitch button { min-height: 30px; border: 0; border-radius: var(--radius-sm); padding: 6px 18px; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
-.metricSwitch button[aria-pressed='true'] { color: var(--ink); background: var(--surface); box-shadow: var(--shadow); }
+.metricSwitch button[aria-pressed='true'] { color: var(--guide-canvas); background: var(--primary); }
 .chart { width: 100%; margin: 18px 0 6px; }
 .chart svg { display: block; width: 100%; height: auto; min-height: 160px; }
 .chartGrid { stroke: var(--line); stroke-width: .7; }

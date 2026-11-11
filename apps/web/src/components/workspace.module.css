@@ -1,20 +1,16 @@
 .workspace { min-height: 100dvh; background: var(--guide-canvas); }
 .topbar { min-height: 72px; padding: 12px 40px; display: flex; align-items: center; gap: 32px; border-bottom: 1px solid var(--guide-blue); background: var(--guide-canvas); }
-.brand { display: inline-flex; color: var(--guide-ink); font-size: 25px; font-weight: 700; letter-spacing: -.03em; text-decoration: none; }
-.brandDot { color: var(--guide-orange); }
 .breadcrumb { display: flex; align-items: center; gap: 18px; font-size: 13px; }
 .breadcrumb a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; text-underline-offset: 4px; }
-.accountArea { margin-left: auto; display: flex; align-items: center; --surface: var(--guide-canvas); --surface-hover: var(--guide-peach); --surface-raised: var(--guide-canvas); --ink: var(--guide-ink); --muted: var(--guide-ink); --line: var(--guide-blue); --line-strong: var(--guide-ink); --primary-soft: var(--guide-peach); --primary-hover: var(--guide-ink); --danger: var(--guide-ink); --action: var(--guide-ink); --action-hover: var(--guide-blue); }
+.accountArea { margin-left: auto; display: flex; align-items: center; --ink: var(--guide-ink); --muted: var(--guide-ink); --line: var(--guide-blue); --line-strong: var(--guide-ink); --primary-soft: var(--guide-peach); --primary-hover: var(--guide-ink); --danger: var(--guide-ink); }
 .content { width: 100%; max-width: 1280px; margin: 0 auto; padding: var(--workspace-padding, 40px) 40px 64px; min-width: 0; }
 .content:focus { outline: none; }
 .heading { margin-bottom: 28px; }
 .heading h1 { margin: 0 0 8px; font-size: 28px; }
 .heading p { max-width: 72ch; margin: 0; color: var(--muted); }
-.eyebrow { display: none; }
-.empty { display: flex; flex-direction: column; align-items: flex-start; padding: 28px 0; border-block: 1px solid var(--line); }
-.emptyIcon { display: none; }
+.empty { display: flex; flex-direction: column; align-items: flex-start; padding: 28px 24px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .empty h2 { font-size: 18px; margin: 0 0 8px; }
 .empty p { max-width: 68ch; color: var(--muted); margin: 0 0 24px; }
 .textLink { display: inline-flex; align-items: center; gap: 8px; color: var(--primary-hover); font-size: 14px; font-weight: 500; }
 @media (max-width: 800px) { .topbar { padding: 10px 20px; gap: 20px; } .content { padding: var(--workspace-padding-small, 28px) 20px 48px; } .breadcrumb { gap: 10px; } }
-@media (max-width: 480px) { .topbar { flex-wrap: wrap; gap: 0 16px; } .brand { font-size: 23px; } .accountArea { order: 1; } .breadcrumb { order: 2; width: 100%; font-size: 12px; } .content { padding-inline: 16px; } }
+@media (max-width: 480px) { .topbar { flex-wrap: wrap; gap: 0 16px; } .accountArea { order: 1; } .breadcrumb { order: 2; width: 100%; font-size: 12px; } .content { padding-inline: 16px; } }

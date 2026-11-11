@@ -84,7 +84,7 @@ export function ScenarioEditor() {
   function edit() { setDirty(true); setSaved(false); setReview(undefined); setAcknowledged(false); }
   return <div className={styles.layout}>
     <form className={styles.panel} onSubmit={save}>
-      <div className={styles.panelTitle}><h2>k6 Script Studio</h2><span className={styles.planned}>{current?.approved && !dirty ? 'Approved · bound to hash' : dirty ? 'Unsaved changes' : 'Unapproved'}</span></div><p>Save exact script versions for review. Keep credentials out of scripts; saved source is retained in history.</p>
+      <div className={styles.panelTitle}><h2>Source &amp; approval</h2><span className={styles.planned} role="status">{current?.approved && !dirty ? 'Approved · bound to hash' : dirty ? 'Unsaved changes' : 'Unapproved'}</span></div><p>Keep credentials out of scripts. Saved source is retained in version history.</p>
       <fieldset disabled={busy} className={styles.fields}>
         <TextField id="scenario-name" label="Scenario name" value={name} required maxLength={120} readOnly={!!current} onChange={event => { setName(event.target.value); edit(); }} />
         <span className={styles.sourceLabel}>Script source</span>
@@ -103,8 +103,7 @@ export function ScenarioEditor() {
         {review.findings.length > 0 && <ul>{review.findings.map((finding, index) => <li key={index}>Line {finding.line}, column {finding.column}: {finding.message}</li>)}</ul>}
         {review.syntaxValid && review.policyAccepted && !current?.approved && <label><input type="checkbox" checked={acknowledged} disabled={busy || dirty} onChange={event => setAcknowledged(event.target.checked)} /> I reviewed the exact source and SHA-256 of saved version {review.version}. Approval does not start a test.</label>}
       </section>}
-      {saved && <Notice title="Version saved">Exact source retained. This version is unvalidated and unapproved.</Notice>}
-      {dirty && <p role="status">Unsaved edits. Save a new version to retain them.</p>}
+      {saved && <Notice title="Version saved">Check the saved script before approving this version.</Notice>}
       {current && <section className={styles.version} aria-label="Saved version details"><h3>Saved version {current.version}</h3>
         <p>{current.approved ? 'Approved saved version — runtime checks still required' : 'Unapproved'} · saved by {current.createdBy} · {new Date(current.createdAt).toLocaleString('en-GB', { timeZone: 'UTC' })}</p>
         <p>SHA-256: <code>{current.sha256}</code></p>

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import { BrandLink } from '../../components/brand-link';
 import { LoginForm } from '../../features/access/login-form';
 import styles from '../../features/access/login.module.css';
 import guide from '../../components/task-guide.module.css';
@@ -11,7 +11,7 @@ export default function LoginPage() {
     <div className={`${guide.theme} ${styles.page}`}>
       <a className="skip-link" href="#login-content">Skip to sign-in form</a>
       <main id="login-content" className={styles.formSide} tabIndex={-1}>
-        <Link className={styles.brand} href="/" aria-label="Loadpilot home">loadpilot<span className={styles.brandDot}>.</span></Link>
+        <BrandLink className={styles.brand} />
         <div className={styles.formContainer}><LoginForm /></div>
       </main>
     </div>

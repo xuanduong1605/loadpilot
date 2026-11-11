@@ -60,17 +60,17 @@ export function LoginForm() {
     <>
       <div className={styles.formHeading}>
         <h1>Sign in</h1>
-        <p id="login-note">Use your operator account to continue.</p>
+        <p id="login-note">Use your operator account.</p>
       </div>
       {/* Unnamed inputs prevent accidental native GET submission when JavaScript is unavailable. */}
       <form className={styles.form} onSubmit={submit} noValidate aria-describedby="login-note" aria-busy={pending}>
         {(errors.username || errors.password) && <Notice title="Check the highlighted fields" tone="error">Enter both fields to sign in.</Notice>}
         {message && <Notice title="Unable to sign in" tone="error">{message}</Notice>}
-        <TextField id="login-username" label="Username" placeholder="Your username" required maxLength={128} disabled={pending}
+        <TextField id="login-username" label="Username" required maxLength={128} disabled={pending}
           autoCapitalize="none" spellCheck={false} autoComplete="username" error={errors.username}
           onChange={() => clearFeedback('username')} />
         <div className={styles.passwordField}>
-          <TextField id="login-password" label="Password" placeholder="Your password" disabled={pending}
+          <TextField id="login-password" label="Password" disabled={pending}
             type={showPassword ? 'text' : 'password'} autoComplete="current-password" required
             error={errors.password} onChange={() => clearFeedback('password')} />
           <button className={styles.passwordToggle} type="button" aria-label={showPassword ? 'Hide password' : 'Show password'}

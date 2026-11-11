@@ -95,7 +95,7 @@ export function ExperimentReview({ draft, dirty, onFinalized, onBusyChange }: { 
   }
   return <section className={styles.form} aria-labelledby="review-inputs-title">
     <h2 id="review-inputs-title">Review experiment inputs</h2>
-    <p>Save all changes and choose an approved exact script version before reviewing.</p>
+    {!dirty && <p>Choose an approved script version before reviewing.</p>}
     <Button variant="secondary" disabled={busy || dirty || !draft.scenarioId} onClick={() => void review()}>Review saved inputs</Button>
     {dirty && <p role="status">Save your changes before reviewing or finalizing.</p>}
     {error && <Notice title="Input review unavailable" tone="error">{error}</Notice>}

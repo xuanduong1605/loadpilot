@@ -1,0 +1,4 @@
+.brand { display: inline-flex; align-items: center; gap: 9px; width: fit-content; color: var(--guide-ink); font-size: 25px; font-weight: 700; letter-spacing: -.03em; text-decoration: none; }
+.mark { display: grid; flex-shrink: 0; place-items: center; width: 30px; height: 30px; border-radius: 7px; background: var(--guide-ink); color: var(--guide-canvas); }
+.dot { color: var(--guide-orange); }
+@media (max-width: 480px) { .brand { font-size: 23px; } }

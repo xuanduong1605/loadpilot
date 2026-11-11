@@ -7,5 +7,5 @@ import { PageHeading } from '../../components/console-ui';
 export function ScriptWorkspace({ editor = false }: { editor?: boolean }) {
   const query = useSearchParams();
   if (!editor && !query.get('id')) return <ScriptLibrary />;
-  return <><p><Link href="/scenarios/">Back to scripts</Link></p><PageHeading title="Script editor" description="Save JavaScript, check the saved source and approve the exact version." /><ScenarioEditor /></>;
+  return <><p><Link href="/scenarios/">Back to scripts</Link></p><PageHeading title="Script editor" /><ScenarioEditor /></>;
 }

@@ -51,7 +51,7 @@ export function ComparisonWorkspace() {
     </form><div className={styles.footnote}>Snapshots contain approved inputs, not measured results or proof of candidate feasibility.</div></section>
     {error && <Notice title="Cannot open snapshot" tone="error">{error}</Notice>}
     {differentTargets && <Notice title="Different targets" tone="error">These snapshots belong to different targets. They cannot establish resource rankings or capacity at a common required load.</Notice>}
-    {snapshots.some(Boolean) && <><section className={styles.panel} aria-labelledby="candidate-matrix-title"><div className={styles.panelHead}><div><h2 id="candidate-matrix-title">Configuration & evidence matrix</h2><p>Input configurations and measured results remain separate.</p></div><StatusBadge tone="warning">Measured ranking unavailable</StatusBadge></div>
+    {snapshots.some(Boolean) && <><section className={styles.panel} aria-labelledby="candidate-matrix-title"><div className={styles.panelHead}><h2 id="candidate-matrix-title">Configuration & evidence matrix</h2><StatusBadge tone="warning">Measured ranking unavailable</StatusBadge></div>
       <div className={styles.scroll} role="region" aria-label="Candidate comparison matrix" tabIndex={0}><table className={styles.table}><thead><tr><th scope="col">Parameter</th><th scope="col">Baseline</th><th scope="col">Candidate</th></tr></thead><tbody>{rows.map(([label, read]) => <tr key={label}><th scope="row">{label}</th>{snapshots.map((snapshot, index) => <td key={index}>{snapshot ? read(snapshot) : '—'}</td>)}</tr>)}</tbody></table></div>
       <div className={styles.footnote}><span>No saved measurements establish Pass, Fail or a capacity interval.</span><span>Recommendations ≠ measurements</span></div>
     </section>

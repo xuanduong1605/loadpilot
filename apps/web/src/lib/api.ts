@@ -30,7 +30,8 @@ export async function mutate<T>(path: string, method: 'POST' | 'PUT', body: unkn
 
 // Only implemented static workspace paths can be return destinations.
 export function returnPath(value: string | null): string {
-  if (!value) return '/';
+  // The bare Applications URL was a common entry point before the feature launcher.
+  if (!value || value === '/targets/' || value === '/targets/?') return '/';
   const path = value.split('?')[0];
   return ['/', '/targets/', '/targets/detail/', '/scenarios/', '/scenarios/editor/', '/scenarios/assistant/',
     '/experiments/', '/experiments/new/', '/experiments/review/', '/experiments/monitor/', '/experiments/planning/',
