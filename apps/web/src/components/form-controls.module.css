@@ -14,10 +14,10 @@
 .hint, .error { font-size: 12px; line-height: 1.6; }
 .hint { color: var(--muted); }
 .error { color: var(--danger); }
-.notice { border: 1px solid #2b4363; border-radius: var(--radius-md); background: var(--primary-soft); padding: 12px 14px; }
+.notice { border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--primary-soft); padding: 12px 14px; }
 .notice strong { display: block; font-size: 12px; font-weight: 600; }
 .notice p { margin: 5px 0 0; font-size: 12px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
-.noticeError { border-color: #63333f; background: var(--danger-soft); color: var(--danger); }
+.noticeError { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
 .noticeError p { color: var(--danger); }
 .spinner { width: 15px; height: 15px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
