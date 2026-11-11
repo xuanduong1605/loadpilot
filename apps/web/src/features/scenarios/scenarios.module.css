@@ -1,4 +1,4 @@
-.layout { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.layout { max-width: 1040px; margin-inline: auto; min-width: 0; }
 .side { display: grid; gap: 16px; min-width: 0; }
 .panelTitle { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .panelTitle h2 { margin: 0; }

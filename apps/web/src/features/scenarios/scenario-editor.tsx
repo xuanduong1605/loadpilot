@@ -8,7 +8,6 @@ import CodeEditor from './code-editor';
 import { Icon } from '../../components/icon';
 
 type Version = { scenarioId: string; name: string; version: number; source: string; sha256: string; createdBy: string; createdAt: string; approved: boolean };
-type ScenarioPage = { items: { id: string; name: string; latestVersion: number }[]; total: number };
 type ScriptReview = { id: string; version: number; sha256: string; syntaxValid: boolean; policyAccepted: boolean; policyVersion: string; parserVersion: string; runtimeCheckRequired: boolean; findings: { code: string; message: string; line: number; column: number }[] };
 
 export function ScenarioEditor() {
@@ -19,27 +18,15 @@ export function ScenarioEditor() {
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [listError, setListError] = useState('');
-  const [page, setPage] = useState<ScenarioPage>();
-  const [offset, setOffset] = useState(0);
-  const [refresh, setRefresh] = useState(0);
   const [saved, setSaved] = useState(false);
   const [review, setReview] = useState<ScriptReview>();
   const [acknowledged, setAcknowledged] = useState(false);
-  const [prompt, setPrompt] = useState('');
   const sourceBytes = new TextEncoder().encode(source).length;
   function accept(value: Version, latestVersion: number) {
     setReview(undefined);
     setAcknowledged(false);
     setCurrent(value); setLatest(latestVersion); setName(value.name); setSource(value.source); setDirty(false);
   }
-  useEffect(() => {
-    let active = true;
-    setPage(undefined); setListError('');
-    void api<ScenarioPage>(`/api/scenarios?offset=${offset}&limit=12`)
-      .then(value => { if (active) setPage(value); }).catch(reason => { if (active) setListError(reason.message); });
-    return () => { active = false; };
-  }, [offset, refresh]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
@@ -62,7 +49,7 @@ export function ScenarioEditor() {
       const newest = await api<Version>(`/api/scenarios/${id}`);
       const value = version ? await api<Version>(`/api/scenarios/${id}/versions/${version}`) : newest;
       accept(value, newest.version);
-      window.history.replaceState(null, '', `/scenarios/?id=${id}&version=${value.version}`);
+      window.history.replaceState(null, '', `/scenarios/editor/?id=${id}&version=${value.version}`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Cannot open scenario.'); }
     finally { setBusy(false); }
   }
@@ -73,8 +60,8 @@ export function ScenarioEditor() {
     try {
       const value = await mutate<Version>(current ? `/api/scenarios/${current.scenarioId}/versions` : '/api/scenarios', 'POST',
         { name, source, expectedVersion: current ? latest : undefined });
-      accept(value, value.version); setSaved(true); setRefresh(value => value + 1);
-      window.history.replaceState(null, '', `/scenarios/?id=${value.scenarioId}&version=${value.version}`);
+      accept(value, value.version); setSaved(true);
+      window.history.replaceState(null, '', `/scenarios/editor/?id=${value.scenarioId}&version=${value.version}`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Cannot save scenario.'); }
     finally { setBusy(false); }
   }
@@ -96,26 +83,6 @@ export function ScenarioEditor() {
   }
   function edit() { setDirty(true); setSaved(false); setReview(undefined); setAcknowledged(false); }
   return <div className={styles.layout}>
-    <aside className={styles.side}>
-    <section className={styles.panel} aria-labelledby="ai-script-title"><div className={styles.panelTitle}><h2 id="ai-script-title">Script requirements</h2><span className={styles.planned}>AI unavailable</span></div>
-      <label className={styles.promptLabel} htmlFor="script-prompt">Natural-language requirements</label><textarea id="script-prompt" value={prompt} onChange={event => setPrompt(event.target.value)} placeholder="Describe endpoints, user behavior and checks…" rows={6} maxLength={4000} />
-      <p>Describe the script you need. AI is unavailable; this text is not submitted or saved automatically.</p><Button disabled title="AI is not implemented yet">Draft with AI</Button>
-    </section>
-    <section className={styles.panel} aria-labelledby="saved-scenarios"><h2 id="saved-scenarios">Saved scripts</h2>
-      {!page && !listError && <p role="status">Loading scenarios…</p>}
-      {listError && <><Notice tone="error" title="Cannot load scenarios">{listError}</Notice><Button onClick={() => setRefresh(value => value + 1)}>Retry list</Button></>}
-      {page && <><ul className={styles.list}>{page.items.map(item => <li key={item.id}><button disabled={busy} onClick={() => void open(item.id)}>{item.name} · v{item.latestVersion}</button></li>)}</ul>
-        {!page.items.length && <p>No saved scenarios on this page.</p>}
-        <div className={styles.actions}><Button variant="secondary" disabled={busy || offset === 0} onClick={() => setOffset(value => Math.max(0, value - 12))}>Previous</Button>
-        <Button variant="secondary" disabled={busy || offset + 12 >= page.total} onClick={() => setOffset(value => value + 12)}>Next</Button></div></>}
-      <Button disabled={busy} variant="secondary" onClick={() => {
-        if (dirty && !window.confirm('Discard unsaved script edits and create a new scenario?')) return;
-        setCurrent(undefined); setLatest(undefined); setName(''); setSource(''); setDirty(false); setError(''); setSaved(false); setReview(undefined); setAcknowledged(false);
-        window.history.replaceState(null, '', '/scenarios/');
-      }}>New scenario</Button>
-    </section>
-    <section className={styles.approvalGuide}><Icon name="lock" width={16} height={16} /><div><strong>Approve the exact version</strong><p>Save, check syntax, verify SHA-256, then approve. Each edit creates a new version that needs approval again.</p></div></section>
-    </aside>
     <form className={styles.panel} onSubmit={save}>
       <div className={styles.panelTitle}><h2>k6 Script Studio</h2><span className={styles.planned}>{current?.approved && !dirty ? 'Approved · bound to hash' : dirty ? 'Unsaved changes' : 'Unapproved'}</span></div><p>Save exact script versions for review. Keep credentials out of scripts; saved source is retained in history.</p>
       <fieldset disabled={busy} className={styles.fields}>
