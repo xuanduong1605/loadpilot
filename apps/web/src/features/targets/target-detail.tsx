@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Notice } from '../../components/form-controls';
 import { api, mutate } from '../../lib/api';
+import { FeatureNav } from '../../components/feature-nav';
 import { TargetForm } from './target-form';
 import { RegistrationForm } from './registration-form';
 import { ConnectionPanel } from './connection-panel';
@@ -17,6 +18,7 @@ export function TargetDetail() {
   const router = useRouter();
   const id = query.get('id');
   const create = query.get('new') === '1';
+  const screen = query.get('check') === '1' ? 'connections' : query.get('screen') ?? 'details';
   const [target, setTarget] = useState<Target>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -51,10 +53,16 @@ export function TargetDetail() {
     {loading && <p role="status">Loading system…</p>}
     {!create && !valid && <Notice title="Choose a system">Open a system from the systems list to view its details.</Notice>}
     {create ? <RegistrationForm onSaved={saved} onCancel={() => router.push('/targets/')} /> : !loading && valid && target?.id === id && <>
+      <FeatureNav label="Application" items={[
+        { label: 'Details', href: '/targets/detail/?id=' + target.id, active: screen === 'details' },
+        { label: 'Connections', href: '/targets/detail/?id=' + target.id + '&screen=connections', active: screen === 'connections' },
+        { label: 'Resources', href: '/targets/detail/?id=' + target.id + '&screen=resources', active: screen === 'resources' },
+      ]} />
+      {screen === 'details' && !editing && <section className={styles.panel}><h2>Application details</h2><dl className={styles.details}><dt>API base URL</dt><dd>{target.baseUrl}</dd><dt>Namespace</dt><dd>{target.namespace}</dd><dt>Deployment</dt><dd>{target.deployment}</dd><dt>Container</dt><dd>{target.container}</dd></dl><p className={styles.hint}>Saved metadata does not establish connectivity. Open Connections to check endpoints, or Resources to inspect the workload.</p></section>}
       {editing && <TargetForm key={`${target.id}:${target.revision}`} target={target} onSaved={saved} onCancel={() => setEditing(false)} />}
       {!editing && target.archivedAt && <p className={detail.archived}>This system is archived. Its identity and history are retained.</p>}
-      {!editing && !target.archivedAt && <ConnectionPanel key={`${target.id}:${target.revision}`} target={target} inspectOnMount={query.get('check') === '1'} onSaved={() => void load()} />}
-      {!editing && <details className={`${detail.disclosure} ${detail.metadata}`}><summary>System settings</summary><dl className={detail.settings}><dt>API base URL</dt><dd>{target.baseUrl}</dd><dt>Updated</dt><dd><time dateTime={target.updatedAt}>{new Date(target.updatedAt).toLocaleString('en-GB', { timeZone: 'UTC' })}</time></dd></dl>
+      {!editing && !target.archivedAt && screen !== 'details' && <ConnectionPanel key={`${target.id}:${target.revision}`} target={target} screen={screen === 'resources' ? 'resources' : 'connections'} inspectOnMount={query.get('check') === '1'} onSaved={() => void load()} />}
+      {!editing && screen === 'details' && <details className={`${detail.disclosure} ${detail.metadata}`}><summary>System settings</summary><dl className={detail.settings}><dt>API base URL</dt><dd>{target.baseUrl}</dd><dt>Updated</dt><dd><time dateTime={target.updatedAt}>{new Date(target.updatedAt).toLocaleString('en-GB', { timeZone: 'UTC' })}</time></dd></dl>
         {!target.archivedAt && <div className={styles.actions}><Button variant="danger" onClick={() => setConfirmArchive(true)}>Archive system</Button></div>}
       </details>}
       {confirmArchive && <section className={styles.panel} aria-label="Confirm archive"><h2>Archive this system?</h2><p>It will be hidden from the active list. Its identity and history will be retained.</p>

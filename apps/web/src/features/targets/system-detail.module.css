@@ -32,7 +32,7 @@
 .chart { width: 100%; margin: 18px 0 6px; }
 .chart svg { display: block; width: 100%; height: auto; min-height: 160px; }
 .chartGrid { stroke: var(--line); stroke-width: .7; }
-.chartLabel { fill: var(--muted); font: 10px Inter, sans-serif; }
+.chartLabel { fill: var(--muted); font: 10px var(--guide-font); }
 .chartLine { stroke: var(--primary); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
 .chartDot { fill: var(--primary); stroke: var(--surface); stroke-width: 2; }
 .chartEmpty { display: grid; justify-items: center; align-content: center; gap: 10px; min-height: 230px; text-align: center; color: var(--muted); }

@@ -23,7 +23,7 @@
 .systemIcon { display: grid; place-items: center; flex-shrink: 0; width: 35px; height: 35px; color: var(--muted); border: 1px solid var(--line); border-radius: 9px; background: var(--surface); box-shadow: var(--shadow); }
 .environment { display: inline-flex; gap: 6px; align-items: center; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: var(--surface-raised); font-size: 10px; font-weight: 500; text-transform: capitalize; white-space: nowrap; }
 .environment::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
-.environment[data-environment='PRODUCTION'] { color: var(--primary-hover); background: var(--primary-soft); border-color: #2b4363; }
+.environment[data-environment='PRODUCTION'] { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--line-strong); }
 .environment[data-environment='PRODUCTION']::before { background: var(--primary); }
 .environment[data-environment='STAGING'] { color: #c5b4f5; background: #241f35; border-color: #49405f; }
 .environment[data-environment='STAGING']::before { background: #c5b4f5; }

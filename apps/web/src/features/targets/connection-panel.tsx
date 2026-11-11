@@ -20,7 +20,7 @@ const label = (value: string) => ({ READY: 'Ready', NOT_CONFIGURED: 'Not configu
 const tone = (value: string) => value === 'READY' ? 'success' : ['NOT_CONFIGURED', 'NOT_CHECKED'].includes(value) ? 'neutral'
   : ['UNAVAILABLE', 'STALE', 'INCOMPLETE', 'MISSING', 'OFFLINE', 'TIMEOUT'].includes(value) ? 'warning' : 'danger';
 
-export function ConnectionPanel({ target, onSaved, inspectOnMount = false }: { target: Target; onSaved: () => void; inspectOnMount?: boolean }) {
+export function ConnectionPanel({ target, onSaved, inspectOnMount = false, screen = 'connections' }: { target: Target; onSaved: () => void; inspectOnMount?: boolean; screen?: 'connections' | 'resources' }) {
   const [connection, setConnection] = useState<ConnectionView>();
   const [policy, setPolicy] = useState<ConnectionPolicy>();
   const [editing, setEditing] = useState(false);
@@ -94,17 +94,17 @@ export function ConnectionPanel({ target, onSaved, inspectOnMount = false }: { t
     {pending && <p role="status" className={styles.checked}>Inspecting endpoints from the platform…</p>}
     {stale && <Notice title="Snapshot is stale">These values are more than 30 seconds old. Refresh to get a current observation.</Notice>}
     {problems.length > 0 && <Notice title="Some data is unavailable">{problems.map(item => `${item.name}: ${label(item.value)}`).join(' · ')}. Open diagnostics for the source and next check.</Notice>}
-    <dl className={styles.metrics} data-stale={stale} aria-label="Current selected-container resources">
+    {screen === 'resources' && <><dl className={styles.metrics} data-stale={stale} aria-label="Current selected-container resources">
       <div className={styles.metric}><dt><Icon name="grid" width={14} height={14} />Ready Pods</dt><dd>{summary?.totalPods != null ? <>{summary.readyPods}<small>/ {summary.totalPods}</small></> : unavailable}</dd></div>
       <div className={styles.metric}><dt><Icon name="chart" width={14} height={14} />CPU usage</dt><dd>{summary?.cpuMillicores != null ? <>{number(summary.cpuMillicores)}<small>mCPU</small></> : unavailable}</dd></div>
       <div className={styles.metric}><dt><Icon name="memory" width={14} height={14} />Memory usage</dt><dd>{summary?.memoryBytes != null ? <>{number(summary.memoryBytes, 1048576)}<small>MiB</small></> : unavailable}</dd></div>
       <div className={styles.metric}><dt><Icon name="refresh" width={14} height={14} />Restarts</dt><dd>{summary?.restarts != null ? number(summary.restarts) : unavailable}</dd></div>
-    </dl>
+    </dl></>}
     <div className={styles.statusRow} aria-label="Connection status">
       {statuses.map(({ name, value }) => <button key={name} type="button" className={styles.status} data-tone={tone(value)} disabled={!connection?.revision || pending} onClick={() => void inspect()} title="Refresh connection checks">{name === 'Monitoring' ? 'Prometheus' : name === 'Kubernetes' ? 'K8s API' : name}<strong>{label(value)}</strong></button>)}
       <span className={styles.status} data-tone="neutral">Grafana <strong>Health check unavailable</strong></span>
     </div>
-    <section className={styles.resourcePanel} aria-labelledby="resource-usage-title">
+    {screen === 'resources' && <section className={styles.resourcePanel} aria-labelledby="resource-usage-title">
       <div className={styles.panelHeading}><div><h2 id="resource-usage-title">Resource usage</h2><p className={styles.chartScope}>Selected container · {metric === 'cpuMillicores' ? 'mCPU' : 'MiB'} · {history.length} observation{history.length === 1 ? '' : 's'} this visit</p></div>
         <div className={styles.metricSwitch} role="group" aria-label="Resource chart metric"><button type="button" aria-pressed={metric === 'cpuMillicores'} onClick={() => setMetric('cpuMillicores')}>CPU</button><button type="button" aria-pressed={metric === 'memoryBytes'} onClick={() => setMetric('memoryBytes')}>Memory</button></div>
       </div>
@@ -117,8 +117,8 @@ export function ConnectionPanel({ target, onSaved, inspectOnMount = false }: { t
           <td><small>CPU {number(pod.cpuRequestMillicores)} / {number(pod.cpuLimitMillicores)} mCPU</small><small>Memory {number(pod.memoryRequestBytes, 1048576)} / {number(pod.memoryLimitBytes, 1048576)} MiB</small></td>
           <td>{state(pod.usage.state)}<small>{pod.usage.timestamp ? new Date(pod.usage.timestamp).toLocaleTimeString('en-GB', { timeZone: 'UTC' }) : 'No sample time'} · {pod.usage.window ?? 'No window'}</small></td></tr>; })}</tbody></table></div>}
       {!snapshot?.pods.length && <p className={styles.emptyPods}>{snapshot ? 'No owned selected-container Pods are available in this inspection.' : 'Pod readiness and resources appear after a connection check.'}</p>}
-    </section>
-    <details className={styles.disclosure}>
+    </section>}
+    <details className={styles.disclosure} open={screen === 'connections'}>
       <summary>Connection diagnostics</summary>
       {!snapshot && <p className={styles.checked}>No inspection has run. Saving a connection does not prove that it is reachable.</p>}
       {!!connection?.revision && <p className={styles.chartScope}>Kubernetes endpoint: {connection.kubernetesUrl}</p>}
