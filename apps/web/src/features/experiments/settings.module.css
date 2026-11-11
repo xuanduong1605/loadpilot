@@ -27,3 +27,13 @@
 @media(max-width: 650px) { .workbench > aside { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 480px) { .details { grid-template-columns: minmax(0, 1fr); gap: 4px; } .details dd { margin-bottom: 12px; } }
 @media (max-width: 480px) { .form { padding: 16px; } }
+
+.steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; }
+.steps button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+.steps button[aria-current='step'] { background: var(--guide-ink); color: var(--guide-canvas); border-color: var(--guide-ink); }
+.steps button:hover:not([aria-current='step']) { background: var(--guide-peach); }
+.stepHeading { font-size: 22px; margin: 0 0 12px; scroll-margin-top: 24px; }
+.stepHeading:focus { outline: none; }
+.stepActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); padding-top: 24px; margin-top: 28px; }
+.stepActions span { font-size: 13px; }
+.reviewRow { display: contents; }

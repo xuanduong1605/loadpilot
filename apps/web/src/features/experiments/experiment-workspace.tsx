@@ -1,22 +1,30 @@
 'use client';
 
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ExperimentSettingsForm } from './settings-form';
 import { SavedExperimentInputs } from './experiment-review';
 import { LiveMonitor } from './live-monitor';
 import { GoalAssistant, OptimizationPlan } from './setup-assistance';
-import { PageHeading, StatusBadge } from '../../components/console-ui';
-import styles from '../../components/console-ui.module.css';
-import setup from './settings.module.css';
+import { PageHeading } from '../../components/console-ui';
+import { ExperimentHistory } from './experiment-history';
+import { ExperimentNavigation, type ExperimentScreen } from './experiment-navigation';
+import { SnapshotLookup } from './snapshot-lookup';
+import styles from '../../components/feature-workspace.module.css';
 
-export function ExperimentWorkspace() {
+export function ExperimentWorkspace({ screen = 'history' }: { screen?: ExperimentScreen }) {
   const query = useSearchParams();
+  const router = useRouter();
   const snapshotId = query.get('snapshot');
-  const live = query.get('view') === 'live';
+  const current = query.get('view') === 'live' ? 'monitor' : snapshotId ? 'review' : query.get('draft') ? 'setup' : screen;
+  const titles = { history: ['Experiments', 'Open a known run or configure a new bounded experiment.'], setup: ['New experiment', 'Prepare your target, load and limits one step at a time.'], review: ['Input review', 'Inspect the exact saved inputs before any execution.'], monitor: ['Run monitor', 'Follow an existing run and request a stop when needed.'], compare: ['Compare & export', 'Compare saved inputs.'], assistance: ['Planning tools', 'Optional assistance is separate from manual configuration.'] };
   return <>
-    <PageHeading title={live ? 'Live Execution Monitor' : 'Experiment Setup'} description={live ? 'Monitor run status and observations, and request a stop using its run ID.' : 'Define goals, load and budgets before approving an immutable input snapshot.'} actions={<StatusBadge tone="warning">Start unavailable</StatusBadge>} />
-    <nav className={styles.tabs} aria-label="Experiment views"><Link href="/experiments/" aria-current={!live ? 'page' : undefined}>Setup & review</Link><Link href="/experiments/?view=live" aria-current={live ? 'page' : undefined}>Live Execution Monitor</Link></nav>
-    {live ? <LiveMonitor /> : snapshotId ? <SavedExperimentInputs id={snapshotId} /> : <div className={setup.workbench}><div><GoalAssistant /><ExperimentSettingsForm onFinalized={id => { window.history.replaceState(null, '', `/experiments/?snapshot=${encodeURIComponent(id)}`); }} /></div><OptimizationPlan /></div>}
+    <PageHeading title={titles[current][0]} description={titles[current][1]} />
+    <ExperimentNavigation screen={current} />
+    {current === 'history' && <><div className={styles.actions}><Link href="/experiments/new/">Create experiment</Link><Link href="/experiments/review/">Open saved inputs</Link></div><ExperimentHistory /></>}
+    {current === 'monitor' && <LiveMonitor />}
+    {current === 'review' && (snapshotId ? <SavedExperimentInputs id={snapshotId} /> : <SnapshotLookup />)}
+    {current === 'setup' && <div className={styles.narrow}><ExperimentSettingsForm onFinalized={id => router.push(`/experiments/review/?snapshot=${encodeURIComponent(id)}`)} /><p><Link href="/experiments/planning/">AI goals and optimization tools</Link> · Currently unavailable</p></div>}
+    {current === 'assistance' && <><div className={styles.actions}><Link href="/experiments/new/">Back to manual setup</Link></div><GoalAssistant /><OptimizationPlan /></>}
   </>;
 }

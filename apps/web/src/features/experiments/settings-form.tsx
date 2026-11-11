@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button, Notice, TextField } from '../../components/form-controls';
 import { api, mutate } from '../../lib/api';
 import type { TargetPage } from '../targets/types';
@@ -38,6 +38,10 @@ type ScenarioPage = { items: { id: string; name: string; latestVersion: number }
 type ScriptVersion = { name: string; sha256: string; approved: boolean };
 
 export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: string) => void }) {
+  const [step, setStep] = useState(0);
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  const stepNames = ['Target & script', 'SLO policy', 'Load & budgets', 'Execution limits', 'Review & save'];
+  function goToStep(next: number) { setStep(next); requestAnimationFrame(() => { stepHeading.current?.focus(); stepHeading.current?.scrollIntoView({ block: 'start' }); }); }
   const [review, setReview] = useState<Review>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -105,6 +109,14 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (reviewBusy) return;
+    const invalid = Array.from(event.currentTarget.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')).find(control => !control.checkValidity());
+    if (invalid) {
+      const section = invalid.closest<HTMLElement>('[data-setup-step]');
+      setError('Complete the highlighted field before validating or saving.');
+      if (section) goToStep(Number(section.dataset.setupStep));
+      requestAnimationFrame(() => invalid.reportValidity());
+      return;
+    }
     const data = new FormData(event.currentTarget);
     const settings = Object.fromEntries(fields.map(([key]) => [key, Number(data.get(key))]));
     const executionBounds = Object.fromEntries(executionFields.map(([key]) => [key, key === 'precisionIterationsPerSecond' && profile.mode === 'SINGLE_RUN' ? null : Number(data.get(key))]));
@@ -117,16 +129,17 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
         const value = await mutate<Draft>(draft ? `/api/experiments/drafts/${draft.id}` : '/api/experiments/drafts', draft ? 'PUT' : 'POST',
           { targetId, settings, executionBounds, loadProfile, sloPolicy, revision: draft?.revision, scenarioId: scenarioId || null, scenarioVersion: scenarioVersion ? Number(scenarioVersion) : null });
         setDraft(value); setSaved(true); setDirty(false);
-        window.history.replaceState(null, '', `/experiments/?draft=${encodeURIComponent(value.id)}`);
+        window.history.replaceState(null, '', `/experiments/new/?draft=${encodeURIComponent(value.id)}`);
       } else setReview(await mutate<Review>('/api/experiments/settings/validate-effective', 'POST', { settings, executionBounds, loadProfile, sloPolicy }));
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Cannot validate settings.'); }
     finally { setBusy(false); }
   }
-  return <><form className={styles.form} onSubmit={submit} onChange={() => { setReview(undefined); setError(''); setSaved(false); setDirty(true); }}>
+  return <><nav className={styles.steps} aria-label="Setup steps">{stepNames.map((name, index) => <button key={name} type="button" aria-current={step === index ? 'step' : undefined} onClick={() => goToStep(index)}>{index + 1}. {name}</button>)}</nav><form noValidate className={styles.form} onSubmit={event => { if (step !== 4) { event.preventDefault(); goToStep(step + 1); } else void submit(event); }} onChange={() => { setReview(undefined); setError(''); setSaved(false); setDirty(true); }}>
+    <h2 ref={stepHeading} tabIndex={-1} className={styles.stepHeading}>{stepNames[step]}</h2>
     <p>Configure a bounded single-run profile or adaptive steady-load trials. Iterations/s equals HTTP requests/s only when each iteration sends exactly one request.</p>
-    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
-      <legend>Load, SLO and budgets</legend>
+    <div data-setup-step={0} hidden={step !== 0}>    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
+      <legend>Choose a target and approved script</legend>
       <label htmlFor="experiment-system">System</label>
       <select id="experiment-system" value={targetId} onChange={event => setTargetId(event.target.value)}>
         <option value="">Choose a registered system</option>
@@ -135,7 +148,7 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
       </select>
       {!targets && !targetError && <p role="status">Loading systems…</p>}
       {targetError && <><Notice title="Cannot load systems" tone="error">{targetError}</Notice><Button onClick={() => setTargetRetry(value => value + 1)}>Retry systems</Button></>}
-      {targets && <div><Button variant="secondary" disabled={!offset} onClick={() => setOffset(value => Math.max(0, value - 12))}>Previous systems</Button>{' '}
+      {targets && targets.total > 12 && <div><Button variant="secondary" disabled={!offset} onClick={() => setOffset(value => Math.max(0, value - 12))}>Previous systems</Button>{' '}
         <Button variant="secondary" disabled={offset + 12 >= targets.total} onClick={() => setOffset(value => value + 12)}>Next systems</Button>
         <p>{targets.total ? `Systems ${offset + 1}–${Math.min(offset + 12, targets.total)} of ${targets.total}` : 'Register a system before saving a draft.'}</p></div>}
       <label htmlFor="experiment-scenario">Scenario</label>
@@ -148,17 +161,16 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
       </select>
       {!scenarios && !scenarioError && <p role="status">Loading scenarios…</p>}
       {scenarioError && <><Notice title="Cannot load scenarios" tone="error">{scenarioError}</Notice><Button onClick={() => setScenarioRetry(value => value + 1)}>Retry scenarios</Button></>}
-      {scenarios && <div><Button variant="secondary" disabled={!scenarioOffset} onClick={() => setScenarioOffset(value => Math.max(0, value - 12))}>Previous scenarios</Button>{' '}
+      {scenarios && scenarios.total > 12 && <div><Button variant="secondary" disabled={!scenarioOffset} onClick={() => setScenarioOffset(value => Math.max(0, value - 12))}>Previous scenarios</Button>{' '}
         <Button variant="secondary" disabled={scenarioOffset + 12 >= scenarios.total} onClick={() => setScenarioOffset(value => value + 12)}>Next scenarios</Button></div>}
       <TextField id="experiment-scenario-version" label="Exact script version" type="number" min={1} step={1} required={!!scenarioId} disabled={!scenarioId}
         value={scenarioVersion} onChange={event => setScenarioVersion(event.target.value)} />
       {scriptError && <Notice title="Cannot load script version" tone="error">{scriptError}</Notice>}
       {script && <p>{script.name} · {script.approved ? 'Approved saved version' : 'Unapproved saved version'}<br />SHA-256: <code>{script.sha256}</code></p>}
       <a href={scenarioId ? `/scenarios/?id=${encodeURIComponent(scenarioId)}&version=${encodeURIComponent(scenarioVersion)}` : '/scenarios/'}>Edit or approve scenario</a>
-      <div className={styles.boundFields}>{fields.filter(([key]) => key !== 'p95LatencyMs' && key !== 'maximumErrorRatio').map(([key, label, min, max, step]) => <TextField key={key} id={key} name={key} label={label} type="number" required min={min} max={max} step={step}
-        value={values[key] ?? ''} onChange={event => setValues(previous => ({ ...previous, [key]: event.target.value }))} />)}</div>
     </fieldset>
-    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
+    </div>
+    <div data-setup-step={1} hidden={step !== 1}>    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
       <legend>SLO policy</legend>
       <SloPolicyEditor value={slo} onChange={value => { setSlo(value); setDirty(true); setSaved(false); setReview(undefined); }}
         latencyThreshold={values.p95LatencyMs ?? ''} errorRatio={values.maximumErrorRatio ?? ''}
@@ -166,27 +178,35 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
       {draft && !draft.sloPolicy && <Notice title="SLO review needed">Choose an explicit percentile and throughput condition before creating a new review of this older draft.</Notice>}
       {draft?.sloPolicy && draft.sloPolicy.resourceConditions == null && <Notice title="Resource SLO review needed">Choose target resource conditions or explicitly leave them unconfigured before creating a new review.</Notice>}
     </fieldset>
-    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
+    </div>
+    <div data-setup-step={2} hidden={step !== 2}>    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
       <legend>Load profile and measurement</legend>
       <LoadProfileEditor value={profile} onChange={value => { setProfile(value); setDirty(true); setSaved(false); setReview(undefined); }} />
       {draft && !draft.loadProfile && <Notice title="Load profile needed">This older draft has no explicit load profile. Choose and save one before creating a new review.</Notice>}
+      <div className={styles.boundFields}>{fields.filter(([key]) => key !== 'p95LatencyMs' && key !== 'maximumErrorRatio').map(([key, label, min, max, step]) => <TextField key={key} id={key} name={key} label={label} type="number" required min={min} max={max} step={step}
+        value={values[key] ?? ''} onChange={event => setValues(previous => ({ ...previous, [key]: event.target.value }))} />)}</div>
     </fieldset>
-    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
+    </div>
+    <div data-setup-step={3} hidden={step !== 3}>    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
       <legend>Generator and execution limits</legend>
       <p>Resources apply to the load generator. Startup, shutdown and retries consume the attempt/time budgets. Enter each limit explicitly.</p>
       <div className={styles.boundFields}>{executionFields.filter(([key]) => key !== 'precisionIterationsPerSecond' || profile.mode !== 'SINGLE_RUN').map(([key, label, min, max]) => <TextField key={key} id={key} name={key} label={label} type="number" required min={min} max={max} step={1}
         value={executionValues[key] ?? ''} onChange={event => setExecutionValues(previous => ({ ...previous, [key]: event.target.value }))} />)}</div>
       {draft && !draft.executionBounds && <Notice title="Execution limits needed">This older draft has no recorded execution limits. Complete these fields and save a new revision before reviewing it.</Notice>}
     </fieldset>
+    </div>
+    <div hidden={step !== 4}><h3>Review your configuration</h3><dl className={styles.details}><dt>Target</dt><dd>{targets?.items.find(item => item.id === targetId)?.name ?? (targetId || 'Not selected')}</dd><dt>Script</dt><dd>{script ? script.name + ' · version ' + scenarioVersion : 'Not selected'}</dd>{fields.map(([key, label]) => <div key={key} className={styles.reviewRow}><dt>{label}</dt><dd>{values[key] || 'Not entered'}</dd></div>)}{executionFields.map(([key, label]) => <div key={key} className={styles.reviewRow}><dt>{label}</dt><dd>{executionValues[key] || (key === 'precisionIterationsPerSecond' && profile.mode === 'SINGLE_RUN' ? 'Not applicable' : 'Not entered')}</dd></div>)}</dl>
     <p>Latency and error ratio must stay at or below their limits. Configured throughput must be at or above its threshold. Missing required evidence yields Insufficient data.</p>
     <div className={styles.actions}><Button type="submit" busy={busy} disabled={reviewBusy}>Validate settings</Button>
     <Button type="submit" name="action" value="save" disabled={busy || reviewBusy || !targetId}>Save draft</Button>
     <Button disabled title="Runtime checks and execution are not implemented">Start experiment</Button>
+    </div>
     </div>
     {error && <Notice title="Validation unavailable" tone="error">{error}</Notice>}
     {saved && <Notice title="Draft saved">Revision {draft?.revision}. Bookmark this page to reopen the saved settings. Saving does not approve or start a load test.</Notice>}
     {draft && <p>Draft {draft.id}, revision {draft.revision}. <a href={`/experiments/?draft=${encodeURIComponent(draft.id)}`}>Reload saved draft</a></p>}
     {review && (review.valid ? <Notice title="Settings validated">These inputs satisfy the current validation rules. Each attempt has a {review.maximumAttemptSeconds} s ceiling; {review.reservedAttemptsPerLoad} attempts are reserved per tested load. They have not been saved or approved for execution.</Notice>
       : <Notice title="Review settings" tone="error">{review.errors.join(' ')}</Notice>)}
-  </form>{draft && <ExperimentReview draft={draft} dirty={dirty || busy} onFinalized={onFinalized} onBusyChange={setReviewBusy} />}</>;
+    <div className={styles.stepActions}><Button variant="secondary" disabled={step === 0 || busy || reviewBusy} onClick={() => goToStep(step - 1)}>Back</Button><span>Step {step + 1} of {stepNames.length}</span>{step < 4 && <Button disabled={busy || reviewBusy} onClick={() => goToStep(step + 1)}>Continue</Button>}</div>
+  </form><div hidden={step !== 4}>{draft && <ExperimentReview draft={draft} dirty={dirty || busy} onFinalized={onFinalized} onBusyChange={setReviewBusy} />}</div></>;
 }
