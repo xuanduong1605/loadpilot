@@ -32,5 +32,7 @@ export async function mutate<T>(path: string, method: 'POST' | 'PUT', body: unkn
 export function returnPath(value: string | null): string {
   if (!value) return '/';
   const path = value.split('?')[0];
-  return ['/', '/targets/', '/targets/detail/', '/scenarios/', '/experiments/', '/comparisons/', '/settings/'].includes(path) ? value : '/';
+  return ['/', '/targets/', '/targets/detail/', '/scenarios/', '/scenarios/editor/', '/scenarios/assistant/',
+    '/experiments/', '/experiments/new/', '/experiments/review/', '/experiments/monitor/', '/experiments/planning/',
+    '/comparisons/', '/settings/'].includes(path) ? value : '/';
 }

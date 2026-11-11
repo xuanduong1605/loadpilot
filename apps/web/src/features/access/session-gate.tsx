@@ -6,6 +6,7 @@ import { Button, Notice } from '../../components/form-controls';
 import { WorkspaceShell } from '../../components/workspace-shell';
 import { AccountMenu } from './account-menu';
 import styles from './session.module.css';
+import guide from '../../components/task-guide.module.css';
 
 export function SessionGate({ children }: { children: React.ReactNode }) {
   const [username, setUsername] = useState<string>();
@@ -50,7 +51,7 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Sign out failed. Try again.'); setLeaving(false); }
   }
 
-  if (!username) return <main className={styles.loading}><p role="status">{error || 'Checking your session…'}</p>
+  if (!username) return <main className={`${guide.theme} ${styles.loading}`}><p role="status">{error || 'Checking your session…'}</p>
     {error && <Button onClick={() => void check()}>Try again</Button>}
     <noscript>Enable JavaScript to sign in to Loadpilot.</noscript></main>;
   return <WorkspaceShell account={<AccountMenu username={username} leaving={leaving} onLogout={() => void logout()} />}>

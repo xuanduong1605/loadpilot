@@ -21,4 +21,4 @@
 .preferenceOption span span { margin-top: 4px; font-size: 12px; color: var(--muted); line-height: 1.6; }
 .preferencesDone { display: block; margin: 24px 0 0 auto; min-height: 38px; padding: 8px 16px; border: 0; border-radius: var(--radius-md); background: var(--action); color: white; font-size: 12px; font-weight: 600; cursor: pointer; }
 .preferencesDone:hover { background: var(--action-hover); }
-.loading { display: grid; justify-items: center; align-content: center; gap: 12px; min-height: 100dvh; padding: 24px; color: var(--muted); }
+.loading { display: grid; justify-items: center; align-content: center; gap: 12px; min-height: 100dvh; padding: 24px; background: var(--canvas); color: var(--muted); text-align: center; }

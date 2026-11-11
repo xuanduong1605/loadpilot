@@ -45,7 +45,8 @@ export function LoginForm() {
         setMessage(reason instanceof ApiError && reason.code === 'CSRF_INVALID'
           ? 'Your sign-in form expired. Try signing in again.'
           : reason instanceof Error ? reason.message : 'Sign in failed. Try again.');
-        password.focus();
+        // Wait until the pending render has re-enabled the password field.
+        requestAnimationFrame(() => password.focus());
       } finally { setPending(false); }
     }
   }
