@@ -7,7 +7,9 @@ import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.*;
 import io.kubernetes.client.openapi.apis.*;
 import io.kubernetes.client.openapi.models.*;
+import java.io.IOException;
 import java.util.*;
+import okhttp3.Call;
 
 /** Two-phase activation primitive. Caller must authorize runtime/egress and commit the exact patch intent. */
 public final class KubernetesWorkerActivator implements AutoCloseable {
@@ -39,18 +41,20 @@ public final class KubernetesWorkerActivator implements AutoCloseable {
             if(!metadata(files.getMetadata(),actualFiles.getMetadata(),identities.filesUid()) || !Boolean.TRUE.equals(actualFiles.getImmutable()) || !Objects.equals(files.getData(),actualFiles.getData())
                     || (actualFiles.getBinaryData()!=null && !actualFiles.getBinaryData().isEmpty())) throw conflict();
             var actualNetwork=new NetworkingV1Api(client).readNamespacedNetworkPolicy(name,namespace).execute();
-            if(!metadata(network.getMetadata(),actualNetwork.getMetadata(),identities.networkUid()) || !Objects.equals(network.getSpec(),actualNetwork.getSpec())) throw conflict();
-            var actual=new BatchV1Api(client).readNamespacedJob(name,namespace).execute();
-            verifyJob(wanted,actual,identities.jobUid(),true);
+            if(!metadata(network.getMetadata(),actualNetwork.getMetadata(),identities.networkUid()) || !KubernetesNetworkPolicy.matches(json,network.getSpec(),actualNetwork.getSpec())) throw conflict();
+            var job=readJob(new BatchV1Api(client).readNamespacedJob(name,namespace).buildCall(null));
+            var actual=JSON.<V1Job>deserialize(job.toString(),V1Job.class);
+            var spec=job.path("spec");
+            verifySavedJob(wanted,actual,spec,identities.jobUid(),true,json);
             if(actual.getStatus()!=null && ((actual.getStatus().getActive()!=null && actual.getStatus().getActive()>0) || (actual.getStatus().getSucceeded()!=null && actual.getStatus().getSucceeded()>0)
                     || (actual.getStatus().getFailed()!=null && actual.getStatus().getFailed()>0) || (actual.getStatus().getConditions()!=null && actual.getStatus().getConditions().stream().anyMatch(c->"True".equals(c.getStatus()) && Set.of("Complete","Failed").contains(c.getType()))))) throw conflict();
-            var spec=json.readTree(JSON.serialize(actual)).path("spec");
+            // The JSON Patch test compares the original API document, including fields the SDK omits on serialization.
             String patch=json.writeValueAsString(List.of(Map.of("op","test","path","/metadata/uid","value",identities.jobUid()),
                     Map.of("op","test","path","/metadata/resourceVersion","value",actual.getMetadata().getResourceVersion()),
                     Map.of("op","test","path","/spec","value",spec),Map.of("op","replace","path","/spec/suspend","value",false)));
             return new Prepared(plan.sha256(),namespace,name,identities.jobUid(),actual.getMetadata().getResourceVersion(),patch,K6PlanEnvelope.hash(patch),JSON.serialize(wanted));
         } catch(Problem known) {throw known;}
-        catch(ApiException failed) {throw failure(failed);}
+        catch(ApiException failed) {throw failure(failed.getCode());}
         catch(Exception invalid) {throw new Problem(503,"Worker activation inspection could not be verified.");}
     }
     public Receipt activate(Prepared command,UUID activationOperationId) {
@@ -61,14 +65,21 @@ public final class KubernetesWorkerActivator implements AutoCloseable {
             var sdk=new BatchV1Api(client).patchNamespacedJob(command.workerName(),command.namespace(),new V1Patch(command.patchJson())).buildCall(null);
             var request=sdk.request().newBuilder().header("Content-Type","application/json-patch+json")
                     .method("PATCH",okhttp3.RequestBody.create(command.patchJson(),okhttp3.MediaType.get("application/json-patch+json"))).build();
-            var response=client.<V1Job>execute(client.getHttpClient().newCall(request),V1Job.class).getData();
-            try {verifyJob(JSON.deserialize(command.expectedJobJson(),V1Job.class),response,command.jobUid(),false);}
+            var job=readJob(client.getHttpClient().newCall(request));
+            var response=JSON.<V1Job>deserialize(job.toString(),V1Job.class);
+            try {verifySavedJob(JSON.deserialize(command.expectedJobJson(),V1Job.class),response,job.path("spec"),command.jobUid(),false,json);}
             catch(Problem drift) {throw new Problem(503,"Activation response changed the reviewed worker; reconcile its state before continuing.");}
             if(command.resourceVersion().equals(response.getMetadata().getResourceVersion())) throw new Problem(503,"Worker activation revision was not acknowledged.");
             return new Receipt(response.getMetadata().getUid(),response.getMetadata().getResourceVersion());
         } catch(Problem known) {throw known;}
-        catch(ApiException failed) {throw failure(failed);}
+        catch(ApiException failed) {throw failure(failed.getCode());}
         catch(Exception invalid) {throw new Problem(503,"Worker activation acknowledgement could not be verified.");}
+    }
+    private JsonNode readJob(Call call) throws IOException {
+        try(var response=call.execute()) {
+            if(!response.isSuccessful() || response.body()==null)throw failure(response.code());
+            return json.readTree(response.body().byteStream());
+        }
     }
     public static void validateCommand(Prepared command,ObjectMapper json) {
         try {
@@ -84,21 +95,23 @@ public final class KubernetesWorkerActivator implements AutoCloseable {
             for(var step:patch) if(!step.isObject() || !step.properties().stream().map(Map.Entry::getKey).collect(java.util.stream.Collectors.toSet()).equals(Set.of("op","path","value"))) throw new IllegalArgumentException();
             var expected=JSON.<V1Job>deserialize(command.expectedJobJson(),V1Job.class);
             if(expected.getMetadata()==null || !Objects.equals(expected.getMetadata().getName(),command.workerName()) || !Objects.equals(expected.getMetadata().getNamespace(),command.namespace()) || expected.getSpec()==null || !Boolean.TRUE.equals(expected.getSpec().getSuspend())) throw new IllegalArgumentException();
-            var actual=(ObjectNode)patch.get(2).path("value").deepCopy();normalizeDefaults(actual,command.jobUid(),command.workerName(),strict);
-            var wanted=(ObjectNode)strict.readTree(JSON.serialize(expected)).path("spec");normalizeDefaults(wanted,command.jobUid(),command.workerName(),strict);
-            if(!actual.equals(wanted)) throw new IllegalArgumentException();
+            verifySpec(expected,patch.get(2).path("value"),command.jobUid(),true,strict);
         } catch(Exception invalid) {throw new IllegalArgumentException("Exact conditional worker activation patch is required.");}
     }
     private static boolean test(JsonNode step,String path) {return "test".equals(step.path("op").asText()) && path.equals(step.path("path").asText());}
-    private void verifyJob(V1Job expected,V1Job actual,String jobUid,boolean suspended) throws Exception {
-        verifySavedJob(expected,actual,jobUid,suspended,json);
-    }
     static void verifySavedJob(V1Job expected,V1Job actual,String jobUid,boolean suspended,ObjectMapper json) throws Exception {
+        verifySavedJob(expected,actual,json.readTree(JSON.serialize(actual)).path("spec"),jobUid,suspended,json);
+    }
+    static void verifySavedJob(V1Job expected,V1Job actual,JsonNode actualSpec,String jobUid,boolean suspended,ObjectMapper json) throws Exception {
         if(actual==null || actual.getSpec()==null || !metadata(expected.getMetadata(),actual.getMetadata(),jobUid) || actual.getMetadata().getResourceVersion()==null || actual.getMetadata().getResourceVersion().isBlank()
                 || !Objects.equals(actual.getSpec().getSuspend(),suspended)) throw conflict();
+        verifySpec(expected,actualSpec,jobUid,suspended,json);
+    }
+    private static void verifySpec(V1Job expected,JsonNode actualSpec,String jobUid,boolean suspended,ObjectMapper json) throws Exception {
+        if(!(actualSpec instanceof ObjectNode spec))throw conflict();
         var wanted=(ObjectNode)json.readTree(JSON.serialize(expected)).path("spec");wanted.put("suspend",suspended);
         normalizeDefaults(wanted,jobUid,expected.getMetadata().getName(),json);
-        var observed=(ObjectNode)json.readTree(JSON.serialize(actual)).path("spec");normalizeDefaults(observed,jobUid,expected.getMetadata().getName(),json);
+        var observed=spec.deepCopy();normalizeDefaults(observed,jobUid,expected.getMetadata().getName(),json);
         if(!wanted.equals(observed)) throw conflict();
     }
     private static void normalizeDefaults(ObjectNode spec,String uid,String name,ObjectMapper json) {
@@ -107,7 +120,9 @@ public final class KubernetesWorkerActivator implements AutoCloseable {
                 && (!selector.hasNonNull("matchExpressions") || (selector.path("matchExpressions").isArray() && selector.path("matchExpressions").isEmpty())) && selector.path("matchLabels").isObject() && !selector.path("matchLabels").isEmpty()
                 && selector.path("matchLabels").properties().stream().allMatch(e->Set.of("controller-uid","batch.kubernetes.io/controller-uid").contains(e.getKey()) && uid.equals(e.getValue().asText()))) spec.remove("selector");
         removeDefault(spec,"manualSelector",false,json);removeDefault(spec,"completionMode","NonIndexed",json);removeDefault(spec,"managedBy","kubernetes.io/job-controller",json);
-        var labels=spec.path("template").path("metadata").path("labels");
+        var templateMetadata=spec.path("template").path("metadata");
+        if(templateMetadata instanceof ObjectNode values && values.path("creationTimestamp").isNull())values.remove("creationTimestamp");
+        var labels=templateMetadata.path("labels");
         if(labels instanceof ObjectNode values) for(String key:List.of("controller-uid","batch.kubernetes.io/controller-uid","job-name","batch.kubernetes.io/job-name")) {
             String expected=key.endsWith("job-name")?name:uid;if(expected.equals(values.path(key).asText())) values.remove(key);
         }
@@ -124,6 +139,6 @@ public final class KubernetesWorkerActivator implements AutoCloseable {
     }
     private static boolean uid(String value) {return value!=null && value.matches("[A-Za-z0-9._:-]{1,128}");}
     private static Problem conflict() {return new Problem(409,"Prepared worker resources changed; reconcile before activation.");}
-    private static Problem failure(ApiException failed) {return failed.getCode()==409 || failed.getCode()==422?conflict():new Problem(failed.getCode()==401 || failed.getCode()==403?403:503,"Worker activation outcome could not be confirmed; reconcile before retrying.");}
+    private static Problem failure(int status) {return status==409 || status==422?conflict():new Problem(status==401 || status==403?403:503,"Worker activation outcome could not be confirmed; reconcile before retrying.");}
     @Override public void close() {client.getHttpClient().connectionPool().evictAll();client.getHttpClient().dispatcher().executorService().shutdown();}
 }

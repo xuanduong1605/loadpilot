@@ -61,7 +61,11 @@ public class RunIntents {
         var existing = db.queryForList("SELECT id FROM experiment_run WHERE snapshot_id=?", UUID.class, snapshot.id());
         if (!existing.isEmpty()) throw new ExperimentDrafts.Problem(409, "This snapshot already has a run. Retry its original start key or review a new draft revision.");
         verifyScope(input);
-        if (db.queryForObject("SELECT count(*) FROM experiment_run WHERE target_id=? AND status IN ('QUEUED','SUBMITTING','RUNNING','STOPPING','RECOVERY_REQUIRED')", Integer.class, input.target().id()) != 0)
+        boolean targetOccupied=Boolean.TRUE.equals(db.queryForObject("""
+            SELECT EXISTS (SELECT 1 FROM experiment_run r WHERE r.target_id=?
+                AND (r.status IN ('QUEUED','SUBMITTING','RUNNING','STOPPING','RECOVERY_REQUIRED') OR %s))
+            """.formatted(WorkerRecoveryStore.UNVERIFIED_RESOURCES),Boolean.class,input.target().id()));
+        if(targetOccupied)
             throw new ExperimentDrafts.Problem(409, "This target already has an active or unresolved run.");
         UUID id=UUID.randomUUID(), attempt=UUID.randomUUID(), shard=UUID.randomUUID();
         db.update("INSERT INTO experiment_run(id,snapshot_id,target_id,request_key,status,deadline_at,created_by) VALUES (?,?,?,?,'QUEUED',CURRENT_TIMESTAMP + ? * INTERVAL '1 second',?)",

@@ -46,7 +46,7 @@ public final class KubernetesWorkerRecovery implements AutoCloseable {
                 || (metadata.hasNonNull("ownerReferences") && !metadata.path("ownerReferences").isEmpty()))throw new Problem(409);
         for(String key:List.of("labels","annotations"))for(var entry:wanted.path("metadata").path(key).properties())if(!entry.getValue().equals(metadata.path(key).path(entry.getKey())))throw new Problem(409);
         if(resource==Resource.FILES){if(!observed.path("immutable").asBoolean() || !wanted.path("data").equals(observed.path("data")) || (observed.hasNonNull("binaryData") && !observed.path("binaryData").isEmpty()))throw new Problem(409);}
-        else if(resource==Resource.NETWORK){if(!wanted.path("spec").equals(observed.path("spec")))throw new Problem(409);}
+        else if(resource==Resource.NETWORK){if(!KubernetesNetworkPolicy.matches(wanted.path("spec"),observed.path("spec")))throw new Problem(409);}
         else{
             boolean suspended=observed.path("spec").path("suspend").asBoolean();if(!suspended && !activeAllowed)throw new Problem(409);
             KubernetesWorkerActivator.verifySavedJob(JSON.deserialize(wanted.toString(),V1Job.class),(V1Job)actual,uid,suspended,json);

@@ -16,8 +16,17 @@ public class WorkerHttpMetrics {
     public WorkerHttpMetrics(RunIntents runs,ExecutionPlans plans,ExecutionClusterClients clients,ObjectMapper json) {this.runs=runs;this.plans=plans;this.clients=clients;this.json=json;}
     @Transactional(propagation=Propagation.NEVER)
     public K6LiveHttpMetrics.Snapshot read(RunIntents.Run run) {
+        return read(run,false);
+    }
+
+    @Transactional(propagation=Propagation.NEVER)
+    public K6LiveHttpMetrics.Snapshot readForRetention(RunIntents.Run run) {
+        return read(run,true);
+    }
+
+    private K6LiveHttpMetrics.Snapshot read(RunIntents.Run run,boolean retain) {
         Instant now=Instant.now();
-        if(!active(run) || run.workerUid()==null) return K6LiveHttpMetrics.unavailable("UNAVAILABLE","Waiting for a bound running worker with HTTP telemetry.",now);
+        if(!eligible(run,retain) || run.workerUid()==null) return K6LiveHttpMetrics.unavailable("UNAVAILABLE","Waiting for a bound running worker with HTTP telemetry.",now);
         if(!capacity.tryAcquire()) return K6LiveHttpMetrics.unavailable("BUSY","Live worker metrics are busy. Retry after the polling interval.",now);
         try {
             var job=plans.workerJob(run);var container=job.getSpec().getTemplate().getSpec().getContainers().getFirst();
@@ -34,11 +43,15 @@ public class WorkerHttpMetrics {
             K6LiveHttpMetrics.Snapshot result;
             try(var session=clients.openWorkerLogs(metricScope,binding,pod);var logs=new KubernetesWorkerLogs(session.client(),json)) {result=logs.collect(ticket,job,pod,Instant.now());}
             var current=runs.get(run.id());
-            if(current.revision()!=run.revision() || !Objects.equals(current.workerUid(),run.workerUid()) || !active(current))
+            // The monitor can record another RUNNING observation during a background read. Retention rechecks the identity under the run lock.
+            if((!retain && current.revision()!=run.revision()) || !Objects.equals(current.workerUid(),run.workerUid()) || !eligible(current,retain))
                 return K6LiveHttpMetrics.unavailable("STATE_CHANGED","Run changed during live metric collection. Poll again.",now);
             return result;
         } catch(RuntimeException unavailable) {return K6LiveHttpMetrics.unavailable("UNAVAILABLE","Worker HTTP metrics are unavailable; execution status and SLO verdict are unchanged.",now);}
         finally {capacity.release();}
     }
-    private boolean active(RunIntents.Run run) {return run.status()==RunLifecycle.Status.RUNNING || run.status()==RunLifecycle.Status.STOPPING || run.status()==RunLifecycle.Status.RECOVERY_REQUIRED;}
+    private boolean eligible(RunIntents.Run run,boolean retain) {
+        if(retain)return RunPartialResults.sampling(run);
+        return run.status()==RunLifecycle.Status.RUNNING || run.status()==RunLifecycle.Status.STOPPING || run.status()==RunLifecycle.Status.RECOVERY_REQUIRED;
+    }
 }

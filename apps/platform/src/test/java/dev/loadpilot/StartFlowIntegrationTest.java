@@ -33,9 +33,10 @@ class StartFlowIntegrationTest {
  }
  @Autowired ApplicationContext context;@Autowired MockMvc mvc;@Autowired JdbcTemplate db;@Autowired ObjectMapper json;
  @Autowired RunIntents runs;@Autowired RunStartProcessor processor;@Autowired StartWorkflows queue;@Autowired RunMonitor monitor;@Autowired RunMonitorStore monitorQueue;@Autowired ExperimentSnapshots.Store snapshots;
+ @Autowired RunPartialResults partialResults;@Autowired WorkerHttpMetrics workerMetrics;
  @MockitoBean RuntimeAdmission admission;@MockitoBean ExecutionClusterClients clients;@MockitoBean SystemInspector inspector;
  // Explicit deterministic scheduler control; real schedule behavior has its own tests, no cross-test background I/O.
- @MockitoBean RunStartSchedule startSchedule;@MockitoBean RunMonitorSchedule monitorSchedule;
+ @MockitoBean RunStartSchedule startSchedule;@MockitoBean RunMonitorSchedule monitorSchedule;@MockitoBean RunPartialResultSchedule partialSchedule;
  ExperimentSnapshotIntegrationTest helper;KubernetesWorkerActivatorTest.Fixture server;
  final Set<UUID> owned=new HashSet<>();
  @BeforeEach void fixtures() throws Exception {
@@ -74,14 +75,53 @@ class StartFlowIntegrationTest {
    assertThat(processor.process(id)).isTrue();assertThat(queue.read(id).state()).isEqualTo("OBSERVING");assertThat(server.requests.stream().filter(s->s.startsWith("POST ")).count()).isEqualTo(3);assertThat(server.requests.stream().filter(s->s.startsWith("PATCH ")).count()).isEqualTo(1);
    assertThat(processor.process(id)).isFalse();assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.SUBMITTING);
    monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.RUNNING);
+   var sampler=new RunPartialResultSchedule(partialResults,runs,workerMetrics);
+   sampler.poll();
+   var retained=partialResults.latest(runs.get(id));
+   assertThat(retained.requestCount()).isEqualTo(2);
+   int requests=server.requests.size();sampler.poll();assertThat(server.requests).hasSize(requests);
    mvc.perform(get("/api/experiments/runs/"+id+"/metrics")).andExpect(status().isOk()).andExpect(jsonPath("$.http.state").value("READY")).andExpect(jsonPath("$.http.requestCount").value(2)).andExpect(jsonPath("$.http.p95LatencyMs").value(290.0)).andExpect(jsonPath("$.resources.cpuMillicores").value(50)).andExpect(jsonPath("$.verdict").value("UNEVALUATED"));
    mvc.perform(post("/api/experiments/runs/"+id+"/stop").with(csrf())).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("STOPPING"));
    monitorQueue.wake(id);monitor.process(id);assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.STOPPING);
    monitorQueue.wake(id);monitor.process(id);assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.CANCELLED);
    assertThat(server.requests.stream().filter(s->s.startsWith("DELETE ") && s.contains("/jobs/")).count()).isEqualTo(1);
+   assertCleanup(id);
+   assertThat(monitorQueue.read(id).outcome()).isEqualTo("CLEANED_NO_RESULT");
    when(admission.available()).thenReturn(false);
    mvc.perform(post("/api/experiments/runs").with(csrf()).contentType("application/json").content(json.writeValueAsString(request))).andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("CANCELLED"));
+   server.close();clearInvocations(clients);
+   mvc.perform(get("/api/experiments/runs/"+id+"/result"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.resultState").value("NOT_COLLECTED"))
+      .andExpect(jsonPath("$.verdict").value("UNEVALUATED"))
+      .andExpect(jsonPath("$.partialHttp.identity.runId").value(id.toString()))
+      .andExpect(jsonPath("$.partialHttp.identity.jobUid").value(retained.identity().jobUid()))
+      .andExpect(jsonPath("$.partialHttp.planSha256").value(retained.planSha256()))
+      .andExpect(jsonPath("$.partialHttp.requestCount").value(2))
+      .andExpect(jsonPath("$.partialHttp.errorCount").value(1))
+      .andExpect(jsonPath("$.partialHttp.coverage").value("PARTIAL_HTTP_WINDOW_NOT_SLO"));
+   verifyNoInteractions(clients);
   }finally{helper.closeObservationFixture(id);}
+ }
+ @Test void unavailableSampleAndStopRaceNeverPersistUnverifiedPartialEvidence() throws Exception {
+  UUID id=start(input());processor.process(id);
+  monitorQueue.wake(id);monitor.process(id);
+  var run=runs.get(id);
+  assertThat(run.status()).isEqualTo(RunLifecycle.Status.RUNNING);
+  server.metricLogOverride="partial line";
+  new RunPartialResultSchedule(partialResults,runs,workerMetrics).poll();
+  assertThat(partialResults.latest(run)).isNull();
+  server.metricLogOverride=null;
+  var inFlight=workerMetrics.readForRetention(run);
+  assertThat(inFlight.state()).isEqualTo("READY");
+  runs.stop(id,"admin");
+  assertThat(partialResults.retain(id,inFlight)).isFalse();
+  monitorQueue.wake(id);monitor.process(id);
+  monitorQueue.wake(id);monitor.process(id);
+  assertCleanup(id);
+  mvc.perform(get("/api/experiments/runs/"+id+"/result"))
+     .andExpect(jsonPath("$.status").value("CANCELLED"))
+     .andExpect(jsonPath("$.partialHttp").doesNotExist());
  }
  @Test void queuedStopAndUnavailableAdmissionCannotCreateWorkers() throws Exception {
   var request=input();when(admission.available()).thenReturn(false);
@@ -90,15 +130,135 @@ class StartFlowIntegrationTest {
   runs.stop(id,"admin");processor.process(id);assertThat(queue.read(id).state()).isEqualTo("HALTED");assertThat(server.requests).isEmpty();verify(admission,never()).verify(any());
  }
  @Test void publicStartCompletesIntoDurableResultsReadableAfterWorkerApiCloses() throws Exception {
-  UUID id=start(input());processor.process(id);var run=runs.get(id);var job=server.job;
-  job.status(new io.kubernetes.client.openapi.models.V1JobStatus().conditions(List.of(new io.kubernetes.client.openapi.models.V1JobCondition().type("Complete").status("True"))));
-  var pod=server.selectedPod();pod.spec(job.getSpec().getTemplate().getSpec());
-  var now=OffsetDateTime.now(ZoneOffset.UTC);String message=helper.finalMessage(run,job).put("durationMs",1000).toString();
-  var ended=new io.kubernetes.client.openapi.models.V1ContainerStateTerminated().exitCode(0).startedAt(now.minusSeconds(2)).finishedAt(now).message(message);
-  pod.status(new io.kubernetes.client.openapi.models.V1PodStatus().phase("Succeeded").containerStatuses(List.of(new io.kubernetes.client.openapi.models.V1ContainerStatus().name("k6").image(job.getSpec().getTemplate().getSpec().getContainers().getFirst().getImage()).imageID("sha256:"+"a".repeat(64)).ready(false).restartCount(0).state(new io.kubernetes.client.openapi.models.V1ContainerState().terminated(ended)))));
-  server.overridePod=pod;monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.COMPLETED);
+  UUID id=start(input());server.legacyTemplateTimestamp=true;processor.process(id);
+  finishWorker(0,helper.finalMessage(runs.get(id),server.job).put("durationMs",1000).toString());
+  monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.COMPLETED);
+  assertCleanup(id);
   assertThat(monitorQueue.read(id).outcome()).isEqualTo("RESULT_SAVED");server.close();clearInvocations(clients);
   mvc.perform(get("/api/experiments/runs/"+id+"/result")).andExpect(status().isOk()).andExpect(jsonPath("$.resultState").value("AVAILABLE")).andExpect(jsonPath("$.verdict").value("UNEVALUATED")).andExpect(jsonPath("$.result.evidence.summary.httpRequests").value(100));verifyNoInteractions(clients);
+ }
+ @Test void workerFailureWithoutSummaryKeepsTerminationEvidenceAndFinishesCleanup() throws Exception {
+  UUID id=start(input());processor.process(id);
+  finishWorker(137,null);
+  monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();
+  assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.FAILED);
+  assertCleanup(id);
+  server.close();clearInvocations(clients);
+  mvc.perform(get("/api/experiments/runs/"+id+"/result"))
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$.resultState").value("SUMMARY_UNAVAILABLE"))
+    .andExpect(jsonPath("$.verdict").value("UNEVALUATED"))
+    .andExpect(jsonPath("$.result.evidence.exitCode").value(137))
+    .andExpect(jsonPath("$.result.evidence.summary").doesNotExist());
+  verifyNoInteractions(clients);
+ }
+ @Test void cleanupRetriesADefiniteVersionConflictWithFreshPreconditionsAndRetainsBothReceipts() throws Exception {
+  UUID id=start(input());processor.process(id);
+  finishWorker(0,helper.finalMessage(runs.get(id),server.job).put("durationMs",1000).toString());
+  server.cleanupVersionConflicts=1;
+  monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();
+  assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.COMPLETED);
+  assertThat(server.removed).isEmpty();
+  assertThat(monitorQueue.read(id).finished()).isFalse();
+  assertThat(jobDeleteReceipts(id)).containsExactly("11:CONFLICT");
+  mvc.perform(get("/api/experiments/runs/"+id+"/result")).andExpect(jsonPath("$.resultState").value("AVAILABLE"));
+
+  monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();
+  assertCleanup(id);
+  assertThat(jobDeleteReceipts(id)).containsExactly("11:CONFLICT","12:ACKNOWLEDGED");
+  assertThatThrownBy(()->db.update("""
+      UPDATE experiment_resource_recovery SET delete_outcome='DENIED' WHERE run_id=? AND delete_outcome='CONFLICT'
+      """,id)).hasMessageContaining("delete intent and final outcome are immutable");
+  assertThatThrownBy(()->db.update("""
+      UPDATE experiment_resource_delete_retry a SET outcome='DENIED'
+      FROM experiment_resource_recovery r WHERE a.preparation_id=r.preparation_id AND r.run_id=?
+      """,id)).hasMessageContaining("Cleanup delete intent and final outcome are immutable");
+ }
+ @Test void cleanupDoesNotResendAnUncertainDeleteAfterResourceVersionChanges() throws Exception {
+  UUID id=start(input());processor.process(id);
+  finishWorker(0,helper.finalMessage(runs.get(id),server.job).put("durationMs",1000).toString());
+  server.cleanupDeleteError=500;
+  monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();
+  server.cleanupDeleteError=0;
+  server.job.getMetadata().resourceVersion("12");
+  monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();
+  assertThat(jobDeleteReceipts(id)).containsExactly("11:UNCERTAIN");
+  assertThat(server.removed).isEmpty();
+  assertThat(monitorQueue.read(id).finished()).isFalse();
+  assertThat(server.requests.stream().filter(s->s.startsWith("DELETE ") && s.contains("/jobs/")).count()).isEqualTo(1);
+ }
+ @Test void cleanupLimitsRepeatedVersionConflictsToThreeAttempts() throws Exception {
+  UUID id=start(input());processor.process(id);
+  finishWorker(0,helper.finalMessage(runs.get(id),server.job).put("durationMs",1000).toString());
+  server.cleanupVersionConflicts=4;
+  for(int poll=0;poll<4;poll++) {
+   monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();
+  }
+  assertThat(jobDeleteReceipts(id)).containsExactly("11:CONFLICT","12:CONFLICT","13:CONFLICT");
+  assertThat(server.removed).isEmpty();
+  assertThat(monitorQueue.read(id).finished()).isFalse();
+  assertThat(server.requests.stream().filter(s->s.startsWith("DELETE ") && s.contains("/jobs/")).count()).isEqualTo(3);
+ }
+ private List<String> jobDeleteReceipts(UUID id) {
+  return db.queryForList("""
+      SELECT a.resource_version || ':' || a.outcome FROM experiment_resource_delete_attempt a
+      JOIN experiment_resource_recovery r ON r.preparation_id=a.preparation_id
+      JOIN experiment_worker_preparation p ON p.id=r.preparation_id
+      WHERE r.run_id=? AND p.resource='JOB' ORDER BY a.attempt_number
+      """,String.class,id);
+ }
+ @Test void terminalJobWithoutAnyWorkerPodCanBeCleanedUpWithoutInventingResults() throws Exception {
+  UUID id=start(input());processor.process(id);
+  server.job.status(new io.kubernetes.client.openapi.models.V1JobStatus().conditions(List.of(new io.kubernetes.client.openapi.models.V1JobCondition().type("Failed").status("True"))));
+  server.podMissing=true;
+  monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();
+  assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.FAILED);
+  assertCleanup(id);
+  assertThat(monitorQueue.read(id).outcome()).isEqualTo("CLEANED_NO_RESULT");
+  mvc.perform(get("/api/experiments/runs/"+id+"/result"))
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$.resultState").value("NOT_COLLECTED"))
+    .andExpect(jsonPath("$.verdict").value("UNEVALUATED"));
+ }
+ @Test void completedRunRetainsTargetProtectionAndDependentResourcesUntilThePodDisappears() throws Exception {
+  var request=input();UUID id=start(request);processor.process(id);
+  finishWorker(0,helper.finalMessage(runs.get(id),server.job).put("durationMs",1000).toString());
+  server.podLingersAfterDelete=true;
+  monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();
+  assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.COMPLETED);
+  assertThat(server.removed).containsExactly("job");
+  assertThat(monitorQueue.read(id).finished()).isFalse();
+  assertThat(db.queryForObject("SELECT count(*) FROM experiment_resource_recovery WHERE run_id=? AND absence_verified_at IS NOT NULL",Integer.class,id)).isZero();
+  mvc.perform(get("/api/experiments/runs/"+id+"/result")).andExpect(jsonPath("$.resultState").value("AVAILABLE"));
+
+  UUID draft=snapshots.get(request.snapshotId()).inputs().draftId();
+  db.update("UPDATE experiment_draft SET revision=revision+1 WHERE id=?",draft);
+  var preview=snapshots.preview(draft);
+  var reviewed=snapshots.finalizeInputs(draft,new ExperimentSnapshots.Finalize(preview.inputs().draftRevision(),preview.sha256(),true),"admin");
+  var next=new RunIntents.Start(reviewed.id(),UUID.randomUUID(),reviewed.sha256(),true);
+  mvc.perform(post("/api/experiments/runs").with(csrf()).contentType("application/json").content(json.writeValueAsString(next)))
+    .andExpect(status().isConflict());
+  assertThat(runs.findRequest(next.requestKey())).isNull();
+
+  server.podLingersAfterDelete=false;
+  monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();
+  assertCleanup(id);
+  assertThat(server.requests.stream().filter(s->s.startsWith("DELETE ") && s.contains("/jobs/")).count()).isEqualTo(1);
+  start(next);
+ }
+ private void finishWorker(int exitCode,String message) {
+  var job=server.job;
+  job.status(new io.kubernetes.client.openapi.models.V1JobStatus().conditions(List.of(new io.kubernetes.client.openapi.models.V1JobCondition().type(exitCode==0?"Complete":"Failed").status("True"))));
+  var pod=server.selectedPod();pod.spec(job.getSpec().getTemplate().getSpec());
+  var now=OffsetDateTime.now(ZoneOffset.UTC);
+  var ended=new io.kubernetes.client.openapi.models.V1ContainerStateTerminated().exitCode(exitCode).startedAt(now.minusSeconds(2)).finishedAt(now).message(message);
+  pod.status(new io.kubernetes.client.openapi.models.V1PodStatus().phase(exitCode==0?"Succeeded":"Failed").containerStatuses(List.of(new io.kubernetes.client.openapi.models.V1ContainerStatus().name("k6").image(job.getSpec().getTemplate().getSpec().getContainers().getFirst().getImage()).imageID("sha256:"+"a".repeat(64)).ready(false).restartCount(0).state(new io.kubernetes.client.openapi.models.V1ContainerState().terminated(ended)))));
+  server.overridePod=pod;
+ }
+ private void assertCleanup(UUID id) {
+  assertThat(server.removed).containsExactlyInAnyOrder("job","network","files");
+  assertThat(db.queryForObject("SELECT count(*) FROM experiment_resource_recovery WHERE run_id=? AND absence_verified_at IS NOT NULL",Integer.class,id)).isEqualTo(3);
+  assertThat(monitorQueue.read(id).finished()).isTrue();
  }
  @Test void rejectedAdmissionReleasesOnlyAnEffectFreeRunAndDoesNotExposePrivateErrors() throws Exception {
   UUID id=start(input());doThrow(new IllegalStateException("private upstream URL token")).when(admission).verify(any());processor.process(id);

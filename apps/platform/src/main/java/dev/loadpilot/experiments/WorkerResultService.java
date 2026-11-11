@@ -11,8 +11,9 @@ import org.springframework.transaction.annotation.*;
 public class WorkerResultService {
     private final RunIntents runs;private final ExecutionPlans plans;private final ExecutionClusterClients clients;private final RunResults results;private final ObjectMapper json;
     public WorkerResultService(RunIntents runs,ExecutionPlans plans,ExecutionClusterClients clients,RunResults results,ObjectMapper json) {this.runs=runs;this.plans=plans;this.clients=clients;this.results=results;this.json=json;}
+    /** Returns null only when a complete terminal Job read verifies that there are no worker Pods. */
     @Transactional(propagation=Propagation.NEVER) public RunResults.Saved collect(UUID runId) {
-        var existing=results.read(runId);if(existing.result()!=null)return existing.result();
+        var existing=results.saved(runId);if(existing!=null)return existing;
         var run=runs.get(runId);
         if(!run.status().terminal() || run.workerUid()==null) throw new ExperimentDrafts.Problem(409,"A terminal run with a bound worker is required for final results.");
         var plan=plans.get(runId);var binding=plans.clusterBinding(runId);var job=plans.workerJob(run);
@@ -21,6 +22,6 @@ public class WorkerResultService {
         var scope=new ExecutionClusterClients.Scope(run.targetId(),binding.connectionRevision(),binding.namespace(),run.workerName(),run.workerUid(),ExecutionClusterClients.Access.READ);
         K6TerminalSummary.Collected collected;
         try(var session=clients.openBound(scope,binding);var collector=new KubernetesWorkerCollector(session.client())) {collected=collector.collectFinal(ticket,job,run.workerUid(),json);}
-        return results.record(runId,run.revision(),run.workerUid(),collected);
+        return collected==null?null:results.record(runId,run.revision(),run.workerUid(),collected);
     }
 }

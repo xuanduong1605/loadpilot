@@ -317,7 +317,8 @@ class ExperimentSnapshotIntegrationTest {
         mvc.perform(get(url)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED")).andExpect(jsonPath("$.verdict").value("UNEVALUATED"))
                 .andExpect(jsonPath("$.resultState").value("AVAILABLE")).andExpect(jsonPath("$.result.evidence.summary.httpRequests").value(100))
                 .andExpect(jsonPath("$.result.evidence.summary.httpDurationMs.p95").value(300)).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("fixture-token"))));
-        assertThat(new dev.loadpilot.experiments.RunResults(db,runs,plans,json).read(run.id()).result()).isEqualTo(saved);
+        var partial=new dev.loadpilot.experiments.RunPartialResults(db,runs,plans);
+        assertThat(new dev.loadpilot.experiments.RunResults(db,runs,plans,json,partial).read(run.id()).result()).isEqualTo(saved);
         mvc.perform(get(url).with(anonymous())).andExpect(status().isUnauthorized());
         mvc.perform(get(url).with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
         mvc.perform(post(url).with(csrf()).contentType("application/json").content("{}")).andExpect(status().isMethodNotAllowed());

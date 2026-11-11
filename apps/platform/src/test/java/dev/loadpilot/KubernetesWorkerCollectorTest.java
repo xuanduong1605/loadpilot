@@ -71,7 +71,7 @@ class KubernetesWorkerCollectorTest {
             assertThat(fixture.requests.get(1)).contains("/api/v1/namespaces/runners/pods?").contains("limit=17");
         }
     }
-    @Test void finalOutputUsesTerminatedPodMessageOnlyAndRejectsMissingAmbiguousRestartedOrDriftedWorkers() throws Exception {
+    @Test void finalOutputPreservesVerifiedTerminationWithoutAUsableSummaryAndRejectsUnverifiedWorkers() throws Exception {
         var factory=new K6JobPlanTest();var f=factory.fixture(factory.steady(),"export default function() {}");
         var planned=factory.planner.construct(f.snapshot(),f.ticket(),factory.policy,factory.destination,java.time.Instant.parse("2026-11-06T00:00:00Z")).job();
         try(var fixture=new Fixture();var collector=new KubernetesWorkerCollector(fixture.client())) {
@@ -97,7 +97,14 @@ class KubernetesWorkerCollectorTest {
                     case "multiple"->{var another=JSON.<V1Pod>deserialize(JSON.serialize(worker),V1Pod.class);another.getMetadata().uid("second-pod");fixture.overridePods=List.of(worker,another);}
                     case "not-terminated"->worker.getStatus().phase("Running");
                 }
-                assertThatThrownBy(()->collector.collectFinal(f.ticket(),planned,"final-job",factory.json)).as(change).isInstanceOf(KubernetesWorkerCollector.Problem.class).hasMessageNotContaining("private-token");
+                if(Set.of("missing","truncated").contains(change)) {
+                    var noSummary=collector.collectFinal(f.ticket(),planned,"final-job",factory.json);
+                    assertThat(noSummary.podUid()).isEqualTo("final-pod");
+                    assertThat(noSummary.exitCode()).isZero();
+                    assertThat(noSummary.summary()).isNull();
+                } else {
+                    assertThatThrownBy(()->collector.collectFinal(f.ticket(),planned,"final-job",factory.json)).as(change).isInstanceOf(KubernetesWorkerCollector.Problem.class).hasMessageNotContaining("private-token");
+                }
             }
         }
     }

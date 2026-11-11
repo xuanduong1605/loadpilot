@@ -45,6 +45,7 @@ class KubernetesWorkerPreparerTest {
                 byte[] response;
                 if(status==201) {
                     var body=(ObjectNode)json.readTree(input);((ObjectNode)body.path("metadata")).put("uid","created-resource-uid").put("resourceVersion","1");
+                    if("NetworkPolicy".equals(body.path("kind").asText()))((ObjectNode)body.path("spec")).remove("ingress");
                     switch(mutation) {
                         case "uid" -> ((ObjectNode)body.path("metadata")).remove("uid");
                         case "namespace" -> ((ObjectNode)body.path("metadata")).put("namespace","other");
@@ -76,7 +77,7 @@ class KubernetesWorkerPreparerTest {
             }
             assertThat(fixture.requests).containsExactly("POST /api/v1/namespaces/loadpilot-runners/configmaps","POST /apis/networking.k8s.io/v1/namespaces/loadpilot-runners/networkpolicies","POST /apis/batch/v1/namespaces/loadpilot-runners/jobs");
             var files=json.readTree(fixture.bodies.get(0));assertThat(files.path("immutable").asBoolean()).isTrue();assertThat(files.path("data").path("scenario.js").asText()).isEqualTo(source);
-            var network=json.readTree(fixture.bodies.get(1));assertThat(network.path("spec").path("egress").size()).isEqualTo(1);assertThat(network.path("spec").path("egress").get(0).path("to").get(0).path("ipBlock").path("cidr").asText()).isEqualTo("192.0.2.10/32");
+            var network=json.readTree(fixture.bodies.get(1));assertThat(network.path("spec").path("ingress").isArray()).isTrue();assertThat(network.path("spec").path("egress").size()).isEqualTo(1);assertThat(network.path("spec").path("egress").get(0).path("to").get(0).path("ipBlock").path("cidr").asText()).isEqualTo("192.0.2.10/32");
             var job=json.readTree(fixture.bodies.get(2));assertThat(job.path("spec").path("suspend").asBoolean()).isTrue();assertThat(job.path("spec").path("backoffLimit").asInt()).isZero();
             assertThat(job.path("metadata").path("annotations").path("loadpilot.dev/submit-operation").asText()).isEqualTo(p.submit().toString());
         }

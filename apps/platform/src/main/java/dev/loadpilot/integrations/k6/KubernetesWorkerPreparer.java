@@ -39,7 +39,7 @@ public final class KubernetesWorkerPreparer implements AutoCloseable {
                 case FILES -> {var response=new CoreV1Api(client).createNamespacedConfigMap(namespace,files).execute();
                     if(response==null || !Boolean.TRUE.equals(response.getImmutable()) || !files.getData().equals(response.getData())) throw new Problem(503,"Worker files were not acknowledged unchanged; reconcile before continuing.");actual=response.getMetadata();}
                 case NETWORK -> {var response=new NetworkingV1Api(client).createNamespacedNetworkPolicy(namespace,network).execute();
-                    if(response==null || !Objects.equals(network.getSpec(),response.getSpec())) throw new Problem(503,"Worker network policy was not acknowledged unchanged; reconcile before continuing.");actual=response.getMetadata();}
+                    if(response==null || !KubernetesNetworkPolicy.matches(json,network.getSpec(),response.getSpec())) throw new Problem(503,"Worker network policy was not acknowledged unchanged; reconcile before continuing.");actual=response.getMetadata();}
                 case JOB -> {var response=new BatchV1Api(client).createNamespacedJob(namespace,job).execute();
                     if(response==null || response.getSpec()==null || !Boolean.TRUE.equals(response.getSpec().getSuspend())) throw new Problem(503,"Worker Job suspension was not acknowledged; reconcile before continuing.");actual=response.getMetadata();}
                 default -> throw new IllegalArgumentException();

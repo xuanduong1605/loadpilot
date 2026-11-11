@@ -28,11 +28,13 @@ public final class KubernetesWorkerCollector implements AutoCloseable {
         return inspect(ticket,expected,boundJobUid).observation();
     }
     private record Read(RunObservations.Observation observation,V1PodList pods) {}
-    /** Final fixed-field message from one terminated, UID-bound worker; no log fallback or percentile pooling. */
+    /** Final evidence from one terminated worker. Null means the terminal Job has no Pods in a complete listing. */
     public K6TerminalSummary.Collected collectFinal(RunDispatch.Ticket ticket,V1Job expected,String boundJobUid,com.fasterxml.jackson.databind.ObjectMapper json) {
         if(boundJobUid==null) throw new Problem(409,"A bound worker UID is required for final results.");
         var read=inspect(ticket,expected,boundJobUid);
-        if(!read.observation().allWorkersTerminated() || read.pods().getItems().size()!=1) throw new Problem(409,"One completely terminated worker Pod is required for final results.");
+        if(!read.observation().allWorkersTerminated()) throw new Problem(409,"Worker termination is required for final results.");
+        if(read.pods().getItems().isEmpty()) return null;
+        if(read.pods().getItems().size()!=1) throw new Problem(409,"Exactly one worker Pod is required for final results.");
         try {
             var planned=expected.getSpec().getTemplate().getSpec().getContainers();
             if(planned.size()!=1 || !K6TerminalSummary.PATH.equals(planned.getFirst().getTerminationMessagePath()) || !"File".equals(planned.getFirst().getTerminationMessagePolicy()))
@@ -52,10 +54,16 @@ public final class KubernetesWorkerCollector implements AutoCloseable {
             var started=ended.getStartedAt().toInstant();var finished=ended.getFinishedAt().toInstant();
             if(finished.isBefore(started) || finished.isAfter(java.time.Instant.now().plusSeconds(5)) || java.time.Duration.between(started,finished).compareTo(java.time.Duration.ofSeconds(ticket.maximumSeconds()+5L))>0
                     || (read.observation().state()==RunLifecycle.WorkerState.SUCCEEDED && (ended.getExitCode()!=0 || !"Succeeded".equals(pod.getStatus().getPhase())))) throw new IllegalArgumentException();
-            var summary=new K6TerminalSummary(json).parse(ended.getMessage(),ticket,expected);
-            if(summary.durationMs()!=null && summary.durationMs()>java.time.Duration.between(started,finished).toMillis()+1000) throw new IllegalArgumentException();
+            K6TerminalSummary.Summary summary=null;
+            try {
+                var parsed=new K6TerminalSummary(json).parse(ended.getMessage(),ticket,expected);
+                if(parsed.durationMs()==null || parsed.durationMs()<=java.time.Duration.between(started,finished).toMillis()+1000)
+                    summary=parsed;
+            } catch(IllegalArgumentException invalidSummary) {
+                // The bound container is already terminated. A missing or invalid message cannot become metrics.
+            }
             return new K6TerminalSummary.Collected(pod.getMetadata().getUid(),started,finished,ended.getExitCode(),summary);
-        } catch(RuntimeException invalid) {throw new Problem(503,"Final worker summary is unavailable or cannot be verified.");}
+        } catch(RuntimeException invalid) {throw new Problem(503,"Final worker identity or termination could not be verified.");}
     }
     public KubernetesWorkerLogs.PodIdentity metricsPod(RunDispatch.Ticket ticket,V1Job expected,String boundJobUid) {
         var read=inspect(ticket,expected,boundJobUid);
@@ -96,6 +104,14 @@ public final class KubernetesWorkerCollector implements AutoCloseable {
     }
     /** Only the guarded stop observer may use this after confirmed submission and a bound Job UID. */
     public RunObservations.Observation confirmAbsent(RunDispatch.Ticket ticket,V1Job expected,String boundJobUid) {
+        return readAbsence(ticket,expected,boundJobUid).observation();
+    }
+    /** Cleanup requires both the Job and every associated Pod to have disappeared. */
+    public boolean confirmRemoved(RunDispatch.Ticket ticket,V1Job expected,String boundJobUid) {
+        return readAbsence(ticket,expected,boundJobUid).podsAbsent();
+    }
+    private record Absence(RunObservations.Observation observation,boolean podsAbsent) {}
+    private Absence readAbsence(RunDispatch.Ticket ticket,V1Job expected,String boundJobUid) {
         if(expected==null || expected.getMetadata()==null || !name(expected.getMetadata().getNamespace()) || !ticket.workerName().equals(expected.getMetadata().getName())
                 || boundJobUid==null || !boundJobUid.matches("[A-Za-z0-9._:-]{1,128}")) throw new IllegalArgumentException("A bound stopped-worker identity is required.");
         String namespace=expected.getMetadata().getNamespace();
@@ -103,7 +119,8 @@ public final class KubernetesWorkerCollector implements AutoCloseable {
             requireAbsent(ticket.workerName(),namespace);
             var listing=relevantPods(namespace,boundJobUid,ticket);
             requireAbsent(ticket.workerName(),namespace);
-            return KubernetesWorkerEvidence.afterConfirmedAbsence(ticket,expected,boundJobUid,listing);
+            var observation=KubernetesWorkerEvidence.afterConfirmedAbsence(ticket,expected,boundJobUid,listing);
+            return new Absence(observation,listing.getItems().isEmpty());
         } catch(Problem known) { throw known; }
         catch(ApiException | RuntimeException failed) { throw new Problem(503,"Stopped worker absence could not be verified; retain recovery protection."); }
     }

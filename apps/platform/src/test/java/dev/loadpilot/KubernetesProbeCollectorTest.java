@@ -37,7 +37,17 @@ class KubernetesProbeCollectorTest {
             clients=new ExecutionClusterClients(json.writeValueAsString(List.of(Map.of("targetId",target.toString(),"connectionRevision",1,"origin",origin(),"addresses",List.of("127.0.0.1"),"namespace",ns,"operations",operations))),json,store);binding=clients.binding(target,ns);value.set("clusterBinding",json.valueToTree(binding));String text=value.toString();original=new K6PlanEnvelope.Prepared(text,K6PlanEnvelope.hash(text));
             plan=builder.construct(original,UUID.randomUUID(),new RuntimeProbePlan.Node("node-a","node-uid"),new RuntimeProbePlan.Canary("http://probe.invalid:8080","192.0.2.33","/ready","/stall"),"https://fixture.invalid/ready",phase,now);body=builder.verify(original,plan);String name=body.path("job").path("metadata").path("name").asText(),podName=name+"-abc";paths=KubernetesProbeCollector.paths(body,podName);
             scope=new ExecutionClusterClients.Scope(target,1,ns,name,null,ExecutionClusterClients.Access.PROBE_READ);clock=Clock.fixed(phase==RuntimeProbePlan.Phase.CLOCK?now.plusSeconds(2):now.plusSeconds(30),ZoneOffset.UTC);
-            for(int i=0;i<3;i++){String field=List.of("files","network","job").get(i);var resource=(ObjectNode)body.path(field).deepCopy();((ObjectNode)resource.path("metadata")).put("uid",field+"-uid").put("resourceVersion","1");reads.put(paths.get(i),resource.toString());}
+            for(int i=0;i<3;i++){
+                String field=List.of("files","network","job").get(i);var resource=(ObjectNode)body.path(field).deepCopy();
+                ((ObjectNode)resource.path("metadata")).put("uid",field+"-uid").put("resourceVersion","1");
+                if(field.equals("network")){
+                    var spec=(ObjectNode)resource.path("spec");
+                    spec.remove("ingress");
+                    if(spec.path("egress").isArray() && spec.path("egress").isEmpty())spec.remove("egress");
+                }
+                if(field.equals("job"))((ObjectNode)resource.at("/spec/template/metadata")).putNull("creationTimestamp");
+                reads.put(paths.get(i),resource.toString());
+            }
             reads.put(paths.get(3),"{\"metadata\":{\"name\":\"node-a\",\"uid\":\"node-uid\",\"resourceVersion\":\"1\"},\"status\":{\"conditions\":[{\"type\":\"Ready\",\"status\":\"True\"}]}}");
             var job=(ObjectNode)json.readTree(reads.get(paths.get(2)));boolean negative=Set.of(RuntimeProbePlan.Phase.LATE_GUARD,RuntimeProbePlan.Phase.EXPIRED_GUARD,RuntimeProbePlan.Phase.DEADLINE).contains(phase);
             if(phase!=RuntimeProbePlan.Phase.CLOCK)job.putObject("status").putArray("conditions").addObject().put("type",negative?"Failed":"Complete").put("status","True").put("reason",phase==RuntimeProbePlan.Phase.DEADLINE?"DeadlineExceeded":negative?"BackoffLimitExceeded":"CompletionsReached");reads.put(paths.get(2),job.toString());
@@ -69,7 +79,7 @@ class KubernetesProbeCollectorTest {
         }
     }
     @Test void wrongSourceOwnershipNodeRuntimeImageRestartOrPaginationNeverBecomeEvidence() throws Exception {
-        for(String mutation:List.of("source","owner","node","image","restart","page","security","unknown-spec","second-uid"))try(var f=new Fixture(RuntimeProbePlan.Phase.ALLOWED,List.of("PROBE_READ"))){
+        for(String mutation:List.of("source","owner","node","image","restart","page","security","unknown-spec","unknown-job-field","second-uid"))try(var f=new Fixture(RuntimeProbePlan.Phase.ALLOWED,List.of("PROBE_READ"))){
             var pod=(ObjectNode)json.readTree(f.reads.get(f.paths.get(5)));
             switch(mutation){
                 case "source"->{var files=(ObjectNode)json.readTree(f.reads.get(f.paths.get(0)));((ObjectNode)files.path("data")).put("scenario.js","private-value");f.reads.put(f.paths.get(0),files.toString());}
@@ -80,6 +90,7 @@ class KubernetesProbeCollectorTest {
                 case "page"->{var list=(ObjectNode)json.readTree(f.reads.get(f.paths.get(4)));((ObjectNode)list.path("metadata")).put("continue","more");f.reads.put(f.paths.get(4),list.toString());}
                 case "security"->((ObjectNode)pod.path("spec").path("containers").get(0).path("securityContext")).put("allowPrivilegeEscalation",true);
                 case "unknown-spec"->((ObjectNode)pod.path("spec")).put("foreignUnsafeField",true);
+                case "unknown-job-field"->{var job=(ObjectNode)json.readTree(f.reads.get(f.paths.get(2)));((ObjectNode)job.at("/spec/template/spec")).put("foreignUnsafeField",true);f.reads.put(f.paths.get(2),job.toString());}
                 case "second-uid"->f.beforeRead=()->{if(f.requests.getLast().equals("GET "+f.paths.get(5))){var changed=pod.deepCopy();((ObjectNode)changed.path("metadata")).put("uid","replacement");f.reads.put(f.paths.get(5),changed.toString());}};
             }
             if(!Set.of("source","page").contains(mutation)){f.reads.put(f.paths.get(5),pod.toString());f.listPod(pod);}

@@ -11,8 +11,9 @@ import static org.mockito.Mockito.*;
 class RunMonitorScheduleTest {
     @Test void disabledByDefaultDoesNotStartBackgroundPolling() {
         var monitor=mock(RunMonitor.class);
-        new ApplicationContextRunner().withUserConfiguration(RunMonitorSchedule.class).withBean(RunMonitor.class,()->monitor).run(context->{
-            assertThat(context).doesNotHaveBean(RunMonitorSchedule.class);verifyNoInteractions(monitor);
+        new ApplicationContextRunner().withUserConfiguration(RunMonitorSchedule.class,RunPartialResultSchedule.class).withBean(RunMonitor.class,()->monitor).run(context->{
+            assertThat(context).doesNotHaveBean(RunMonitorSchedule.class).doesNotHaveBean(RunPartialResultSchedule.class);
+            verifyNoInteractions(monitor);
         });
     }
     @Test void enabledPollingRunsWithoutBrowserAndRetriesAfterQueueOutage() {
@@ -21,6 +22,22 @@ class RunMonitorScheduleTest {
         new ApplicationContextRunner().withUserConfiguration(RunMonitorSchedule.class).withBean(RunMonitor.class,()->monitor)
                 .withPropertyValues("platform.execution.monitor-enabled=true").run(context->{
                     assertThat(context).hasSingleBean(RunMonitorSchedule.class);assertThat(retried.await(5,TimeUnit.SECONDS)).isTrue();
+                });
+    }
+
+    @Test void partialSamplingUsesItsOwnScheduler() {
+        var monitor=mock(RunMonitor.class);
+        var partial=mock(RunPartialResults.class);
+        var monitorThread=new CompletableFuture<String>();
+        var partialThread=new CompletableFuture<String>();
+        when(monitor.tick()).thenAnswer(call->{monitorThread.complete(Thread.currentThread().getName());return false;});
+        when(partial.claimNext()).thenAnswer(call->{partialThread.complete(Thread.currentThread().getName());return null;});
+        new ApplicationContextRunner().withUserConfiguration(RunMonitorSchedule.class,RunPartialResultSchedule.class)
+                .withBean(RunMonitor.class,()->monitor).withBean(RunPartialResults.class,()->partial)
+                .withBean(RunIntents.class,()->mock(RunIntents.class)).withBean(WorkerHttpMetrics.class,()->mock(WorkerHttpMetrics.class))
+                .withPropertyValues("platform.execution.monitor-enabled=true").run(context->{
+                    assertThat(monitorThread.get(5,TimeUnit.SECONDS)).startsWith("execution-");
+                    assertThat(partialThread.get(5,TimeUnit.SECONDS)).startsWith("partial-http-");
                 });
     }
 }

@@ -48,10 +48,9 @@ public final class KubernetesProbeCollector {
             var paths=paths(probe,null);long began=System.nanoTime();
             var files=get(scope,binding,original,prepared,paths.get(0),null);var network=get(scope,binding,original,prepared,paths.get(1),null);var job=get(scope,binding,original,prepared,paths.get(2),null);var node=get(scope,binding,original,prepared,paths.get(3),null);
             resource(probe.path("files"),files);resource(probe.path("network"),network);resource(probe.path("job"),job);
-            if(!files.path("immutable").asBoolean() || !files.path("data").equals(probe.path("files").path("data")) || (files.hasNonNull("binaryData") && !files.path("binaryData").isEmpty()) || !network.path("spec").equals(probe.path("network").path("spec")))throw denied();
+            if(!files.path("immutable").asBoolean() || !files.path("data").equals(probe.path("files").path("data")) || (files.hasNonNull("binaryData") && !files.path("binaryData").isEmpty()) || !KubernetesNetworkPolicy.matches(probe.path("network").path("spec"),network.path("spec")))throw denied();
             String jobUid=job.path("metadata").path("uid").asText();var expected=JSON.<V1Job>deserialize(probe.path("job").toString(),V1Job.class);var actual=JSON.<V1Job>deserialize(job.toString(),V1Job.class);
-            KubernetesWorkerActivator.verifySavedJob(expected,actual,jobUid,false,json);
-            if(!job.path("spec").equals(json.readTree(JSON.serialize(actual)).path("spec")))throw denied();
+            KubernetesWorkerActivator.verifySavedJob(expected,actual,job.path("spec"),jobUid,false,json);
             if(!probe.path("node").path("name").equals(node.path("metadata").path("name")) || !probe.path("node").path("uid").equals(node.path("metadata").path("uid")) || node.path("metadata").hasNonNull("deletionTimestamp"))throw denied();
             int ready=0;for(var condition:node.path("status").path("conditions"))if("Ready".equals(condition.path("type").asText()) && "True".equals(condition.path("status").asText()))ready++;if(ready!=1)throw denied();
             var listing=get(scope,binding,original,prepared,paths.get(4),null);

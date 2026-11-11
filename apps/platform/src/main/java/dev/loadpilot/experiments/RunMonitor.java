@@ -42,10 +42,18 @@ public class RunMonitor {
             if(run.status()==RunLifecycle.Status.STOPPING && run.workerUid()!=null && run.operations().stream().anyMatch(op->op.kind().equals("SUBMIT") && op.status().equals("CONFIRMED")))
                 workers.dispatchPendingStop(run.id()); // Existing receipt prevents resend after restart/uncertainty.
             if(run.status().terminal()) {
-                boolean saved=false;
-                try{if(run.workerUid()!=null){results.collect(run.id());saved=true;}}catch(RuntimeException missing){if(recovery==null)throw missing;}
-                if(recovery==null)outcome=run.workerUid()==null?NO_WORKER:RESULT_SAVED;
-                else if(recovery.cleanup(run.id(),saved))outcome=saved?RESULT_SAVED:run.workerUid()==null?NO_WORKER:CLEANED_NO_RESULT;
+                boolean resultSaved=false;
+                boolean finalReadCompleted=false;
+                try {
+                    if(run.workerUid()!=null) {
+                        resultSaved=results.collect(run.id())!=null;
+                        finalReadCompleted=true;
+                    }
+                } catch(RuntimeException unavailable) {
+                    if(recovery==null)throw unavailable;
+                }
+                if(recovery==null || recovery.cleanup(run.id(),finalReadCompleted))
+                    outcome=resultSaved?RESULT_SAVED:run.workerUid()==null?NO_WORKER:CLEANED_NO_RESULT;
             } else outcome="UNREACHABLE".equals(run.workerState())?UNAVAILABLE:WAITING;
         } catch(RuntimeException unavailable) {
             // Keep only a fixed outcome. Secrets/URLs/SDK response bodies must not enter status or logs.

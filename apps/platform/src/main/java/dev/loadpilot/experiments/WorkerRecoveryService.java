@@ -17,42 +17,57 @@ public class WorkerRecoveryService {
         var rows=store.rows(id);var job=rows.stream().filter(r->r.resource()==Resource.JOB).findFirst().orElse(null);
         if(job==null){cleanup(id,false);return;}
         var saved=plans.get(id);var exact=new K6PlanEnvelope.Prepared(saved.canonicalJson(),saved.sha256());var binding=plans.clusterBinding(id);
-        var found=inspect(run,binding,exact,job,job.knownUid()!=null);
+        var found=inspect(run,binding,exact,job.resource(),job.knownUid(),job.knownUid()!=null);
         String uid=job.knownUid();if(found!=null){store.bind(id,job.preparationId(),found);uid=found.uid();}
         if(uid==null)return; //404 after an uncertain CREATE cannot release the target guard.
-        var ticket=new RunDispatch.Ticket(run.id(),run.snapshotId(),run.revision(),run.attemptId(),run.shardId(),saved.submitOperationId(),run.workerName(),run.maximumSeconds(),run.deadlineAt());
-        var scope=new ExecutionClusterClients.Scope(run.targetId(),binding.connectionRevision(),binding.namespace(),run.workerName(),uid,ExecutionClusterClients.Access.READ);
+        var ticket=ticket(run,saved);
+        var scope=readScope(run,binding,uid);
         RunObservations.Observation evidence;
         try(var session=clients.openBound(scope,binding);var collector=new KubernetesWorkerCollector(session.client())){
             evidence=found==null?collector.confirmAbsent(ticket,plans.workerJob(run),uid):collector.collect(ticket,plans.workerJob(run),uid);
         }
         observations.record(id,evidence); // Revision/UID recheck after I/O; never treat inspection as SLO evidence.
     }
-    @Transactional(propagation=Propagation.NEVER) public boolean cleanup(UUID id,boolean finalResultSaved){
+    @Transactional(propagation=Propagation.NEVER) public boolean cleanup(UUID id,boolean finalReadCompleted){
         var run=runs.get(id);boolean before=store.beforeJob(id);
         if(!run.status().terminal() && !before)return false;
         var rows=store.rows(id);if(rows.isEmpty()){if(before)store.completeBeforeJob(id);return true;}
         var saved=plans.get(id);var exact=new K6PlanEnvelope.Prepared(saved.canonicalJson(),saved.sha256());var binding=plans.clusterBinding(id);
-        // Remove Job before dependent files/network. Completion retains the Job until its summary is durable.
+        // Keep the network policy and files until both the Job and its Pods are gone.
         for(var resource:List.of(Resource.JOB,Resource.NETWORK,Resource.FILES))for(var row:rows)if(row.resource()==resource && row.absentAt()==null){
-            var found=inspect(run,binding,exact,row,run.workerUid()!=null);
-            if(found==null){if(row.knownUid()==null)return false;store.absent(id,row.preparationId(),row.knownUid());continue;}
-            if(resource==Resource.JOB && !finalResultSaved)return false; // Do not discard a possible partial/final summary.
-            var claim=store.claimDelete(id,row.preparationId(),found);
-            if(claim.dispatch()){
-                var command=new KubernetesWorkerRecovery.Delete(resource,binding.namespace(),run.workerName(),claim.row().knownUid(),claim.row().deleteVersion());
-                var scope=scope(run,binding);
-                try(var session=clients.openRecovery(scope,binding,exact,resource,command);var adapter=new KubernetesWorkerRecovery(session.client(),json)){store.finishDelete(row.preparationId(),adapter.delete(command));}
+            String uid=row.knownUid();
+            var found=inspect(run,binding,exact,resource,uid,run.workerUid()!=null);
+            if(found!=null){
+                if(resource==Resource.JOB && !finalReadCompleted)return false; // Do not discard a possible partial/final summary.
+                var claim=store.claimDelete(id,row.preparationId(),found);
+                if(claim!=null){
+                    var command=new KubernetesWorkerRecovery.Delete(resource,binding.namespace(),run.workerName(),claim.uid(),claim.resourceVersion());
+                    var scope=scope(run,binding);
+                    try(var session=clients.openRecovery(scope,binding,exact,resource,command);var adapter=new KubernetesWorkerRecovery(session.client(),json)){store.finishDelete(claim.operationId(),adapter.delete(command));}
+                }
+                uid=found.uid();
+                if(inspect(run,binding,exact,resource,uid,run.workerUid()!=null)!=null)return false;
             }
-            var known=new WorkerRecoveryStore.Row(row.preparationId(),resource,row.creationOutcome(),found.uid(),claim.row().deleteOperation(),claim.row().deleteVersion(),claim.row().deleteOutcome(),null);
-            if(inspect(run,binding,exact,known,run.workerUid()!=null)!=null)return false;
-            store.absent(id,row.preparationId(),found.uid());
+            if(uid==null)return false;
+            if(resource==Resource.JOB && !workerRemoved(run,saved,binding,uid))return false;
+            store.absent(id,row.preparationId(),uid);
         }
         if(store.rows(id).stream().anyMatch(r->r.absentAt()==null))return false;
         if(before)store.completeBeforeJob(id);store.completeWorkflow(id);return true;
     }
+    private boolean workerRemoved(RunIntents.Run run,ExecutionPlans.Saved saved,ExecutionClusterClients.Binding binding,String uid){
+        try(var session=clients.openBound(readScope(run,binding,uid),binding);var collector=new KubernetesWorkerCollector(session.client())){
+            return collector.confirmRemoved(ticket(run,saved),plans.workerJob(run),uid);
+        }
+    }
+    private static RunDispatch.Ticket ticket(RunIntents.Run run,ExecutionPlans.Saved saved){
+        return new RunDispatch.Ticket(run.id(),run.snapshotId(),run.revision(),run.attemptId(),run.shardId(),saved.submitOperationId(),run.workerName(),run.maximumSeconds(),run.deadlineAt());
+    }
+    private static ExecutionClusterClients.Scope readScope(RunIntents.Run run,ExecutionClusterClients.Binding binding,String uid){
+        return new ExecutionClusterClients.Scope(run.targetId(),binding.connectionRevision(),binding.namespace(),run.workerName(),uid,ExecutionClusterClients.Access.READ);
+    }
     private ExecutionClusterClients.Scope scope(RunIntents.Run run,ExecutionClusterClients.Binding binding){return new ExecutionClusterClients.Scope(run.targetId(),binding.connectionRevision(),binding.namespace(),run.workerName(),run.workerUid(),ExecutionClusterClients.Access.RECOVER);}
-    private KubernetesWorkerRecovery.Found inspect(RunIntents.Run run,ExecutionClusterClients.Binding binding,K6PlanEnvelope.Prepared plan,WorkerRecoveryStore.Row row,boolean active){
-        try(var session=clients.openRecovery(scope(run,binding),binding,plan,row.resource(),null);var adapter=new KubernetesWorkerRecovery(session.client(),json)){return adapter.inspect(plan,row.resource(),row.knownUid(),active);}
+    private KubernetesWorkerRecovery.Found inspect(RunIntents.Run run,ExecutionClusterClients.Binding binding,K6PlanEnvelope.Prepared plan,Resource resource,String uid,boolean active){
+        try(var session=clients.openRecovery(scope(run,binding),binding,plan,resource,null);var adapter=new KubernetesWorkerRecovery(session.client(),json)){return adapter.inspect(plan,resource,uid,active);}
     }
 }

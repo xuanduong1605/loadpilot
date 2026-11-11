@@ -78,23 +78,25 @@ class KubernetesWorkerRecoveryTest {
  }
  @Test void unknownMissingCreateRetainsRecoveryProtectionAndNeverRetriesCreationOrDeletes() throws Exception {
   try(var f=new Fixture()){
-   f.server.removed.add("files");var row=new WorkerRecoveryStore.Row(UUID.randomUUID(),Resource.FILES,"UNCERTAIN",null,null,null,null,null);var s=service(f,RunLifecycle.Status.STOPPING,row,true);
+   f.server.removed.add("files");var row=new WorkerRecoveryStore.Row(UUID.randomUUID(),Resource.FILES,null,null);var s=service(f,RunLifecycle.Status.STOPPING,row,true);
    assertThat(s.service().cleanup(s.run().id(),false)).isFalse();verify(s.store(),never()).absent(any(),any(),any());verify(s.store(),never()).completeBeforeJob(any());assertThat(f.server.requests).hasSize(2).allMatch(r->r.startsWith("GET "));
   }
  }
  @Test void partialStartCanBeCleanedOnlyAfterAnIdentifiedResourceAndDurableDeleteClaim() throws Exception {
   try(var f=new Fixture()){
-   var id=UUID.randomUUID();var row=new WorkerRecoveryStore.Row(id,Resource.FILES,"UNCERTAIN",null,null,null,null,null);var s=service(f,RunLifecycle.Status.STOPPING,row,true);
-   when(s.store().claimDelete(eq(s.run().id()),eq(id),any())).thenAnswer(c->{assertThat(f.server.requests).noneMatch(r->r.startsWith("DELETE "));KubernetesWorkerRecovery.Found found=c.getArgument(2);return new WorkerRecoveryStore.Claim(new WorkerRecoveryStore.Row(id,Resource.FILES,"UNCERTAIN",found.uid(),UUID.randomUUID(),found.resourceVersion(),"REQUESTED",null),true);});
-   doAnswer(c->{when(s.store().rows(s.run().id())).thenReturn(List.of(new WorkerRecoveryStore.Row(id,Resource.FILES,"UNCERTAIN","files-uid",UUID.randomUUID(),"1","ACKNOWLEDGED",OffsetDateTime.now())));return null;}).when(s.store()).absent(eq(s.run().id()),eq(id),eq("files-uid"));
+   var id=UUID.randomUUID();var row=new WorkerRecoveryStore.Row(id,Resource.FILES,null,null);var s=service(f,RunLifecycle.Status.STOPPING,row,true);
+   var operation=UUID.randomUUID();
+   when(s.store().claimDelete(eq(s.run().id()),eq(id),any())).thenAnswer(c->{assertThat(f.server.requests).noneMatch(r->r.startsWith("DELETE "));KubernetesWorkerRecovery.Found found=c.getArgument(2);return new WorkerRecoveryStore.DeleteClaim(operation,found.uid(),found.resourceVersion());});
+   doAnswer(c->{when(s.store().rows(s.run().id())).thenReturn(List.of(new WorkerRecoveryStore.Row(id,Resource.FILES,"files-uid",OffsetDateTime.now())));return null;}).when(s.store()).absent(eq(s.run().id()),eq(id),eq("files-uid"));
    assertThat(s.service().cleanup(s.run().id(),false)).isTrue();verify(s.store()).completeBeforeJob(s.run().id());verify(s.store()).completeWorkflow(s.run().id());assertThat(f.server.requests.stream().filter(r->r.startsWith("DELETE ")).count()).isEqualTo(1);
+   verify(s.store()).finishDelete(operation,"ACKNOWLEDGED");
   }
  }
  @Test void uncollectedSummaryBlocksJobDeletionAndAnUncertainDeleteIsNeverResent() throws Exception {
   try(var f=new Fixture()){
-   var row=new WorkerRecoveryStore.Row(UUID.randomUUID(),Resource.JOB,"ACKNOWLEDGED","job-uid",null,null,null,null);var s=service(f,RunLifecycle.Status.COMPLETED,row,false);
+   var row=new WorkerRecoveryStore.Row(UUID.randomUUID(),Resource.JOB,"job-uid",null);var s=service(f,RunLifecycle.Status.COMPLETED,row,false);
    assertThat(s.service().cleanup(s.run().id(),false)).isFalse();verify(s.store(),never()).claimDelete(any(),any(),any());
-   var pending=new WorkerRecoveryStore.Row(row.preparationId(),Resource.JOB,"ACKNOWLEDGED","job-uid",UUID.randomUUID(),"10","UNCERTAIN",null);when(s.store().claimDelete(any(),any(),any())).thenReturn(new WorkerRecoveryStore.Claim(pending,false));
+   when(s.store().claimDelete(any(),any(),any())).thenReturn(null);
    assertThat(s.service().cleanup(s.run().id(),true)).isFalse();assertThat(f.server.requests).noneMatch(r->r.startsWith("DELETE "));
   }
  }

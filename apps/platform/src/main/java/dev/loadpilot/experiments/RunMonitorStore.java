@@ -19,12 +19,15 @@ public class RunMonitorStore {
     private static final String DISCOVER="""
         INSERT INTO experiment_run_monitor(run_id)
         SELECT r.id FROM experiment_run r JOIN experiment_attempt a ON a.run_id=r.id AND a.attempt_number=1
-        WHERE NOT EXISTS (SELECT 1 FROM experiment_run_monitor m WHERE m.run_id=r.id)
-          AND (r.status IN ('QUEUED','SUBMITTING','RUNNING','STOPPING','RECOVERY_REQUIRED')
-            OR (a.worker_uid IS NOT NULL AND EXISTS (SELECT 1 FROM experiment_execution_plan p WHERE p.run_id=r.id)
-                AND NOT EXISTS (SELECT 1 FROM experiment_worker_result x WHERE x.run_id=r.id)))
-        ORDER BY r.created_at,r.id LIMIT 32 ON CONFLICT DO NOTHING
-        """;
+        LEFT JOIN experiment_run_monitor m ON m.run_id=r.id
+        WHERE (m.run_id IS NULL AND (r.status IN ('QUEUED','SUBMITTING','RUNNING','STOPPING','RECOVERY_REQUIRED')
+          OR (a.worker_uid IS NOT NULL AND EXISTS (SELECT 1 FROM experiment_execution_plan p WHERE p.run_id=r.id)
+              AND NOT EXISTS (SELECT 1 FROM experiment_worker_result x WHERE x.run_id=r.id))))
+          OR ((m.run_id IS NULL OR m.finished) AND %s)
+        ORDER BY r.created_at,r.id LIMIT 32
+        ON CONFLICT (run_id) DO UPDATE SET finished=FALSE,outcome='WAITING',next_at=clock_timestamp()
+        WHERE experiment_run_monitor.finished
+        """.formatted(WorkerRecoveryStore.UNVERIFIED_RESOURCES);
     @Transactional public Claim claimNext() {
         db.update(DISCOVER);
         var ids=db.queryForList("SELECT run_id FROM experiment_run_monitor WHERE NOT finished AND next_at<=clock_timestamp() AND (lease_until IS NULL OR lease_until<=clock_timestamp()) ORDER BY next_at,run_id LIMIT 1 FOR UPDATE SKIP LOCKED",UUID.class);
