@@ -7,10 +7,9 @@ import { SavedExperimentInputs } from './experiment-review';
 import { LiveMonitor } from './live-monitor';
 import { GoalAssistant, OptimizationPlan } from './setup-assistance';
 import { PageHeading } from '../../components/console-ui';
-import { ExperimentHistory } from './experiment-history';
+import { ExperimentRecords } from './experiment-records';
 import { ExperimentNavigation, type ExperimentScreen } from './experiment-navigation';
-import { SnapshotLookup } from './snapshot-lookup';
-import styles from '../../components/feature-workspace.module.css';
+import guide from '../../components/task-guide.module.css';
 
 export function ExperimentWorkspace({ screen = 'history' }: { screen?: ExperimentScreen }) {
   const query = useSearchParams();
@@ -19,12 +18,12 @@ export function ExperimentWorkspace({ screen = 'history' }: { screen?: Experimen
   const current = query.get('view') === 'live' ? 'monitor' : snapshotId ? 'review' : query.get('draft') ? 'setup' : screen;
   const titles = { history: 'Experiments', setup: 'New experiment', review: 'Input review', monitor: 'Run monitor', compare: 'Compare & export', assistance: 'Planning tools' };
   return <>
-    <PageHeading title={titles[current]} />
+    <PageHeading title={titles[current]} actions={current === 'history' ? <Link className={guide.button} href="/experiments/new/">Create experiment</Link> : undefined} />
     <ExperimentNavigation screen={current} />
-    {current === 'history' && <><div className={styles.actions}><Link href="/experiments/new/">Create experiment</Link><Link href="/experiments/review/">Open saved inputs</Link></div><ExperimentHistory /></>}
+    {current === 'history' && <><ExperimentRecords kind="RUNS" title="Runs" /><ExperimentRecords kind="DRAFTS" title="Saved drafts" /><ExperimentRecords kind="SNAPSHOTS" title="Finalized inputs" /></>}
     {current === 'monitor' && <LiveMonitor />}
-    {current === 'review' && (snapshotId ? <SavedExperimentInputs id={snapshotId} /> : <SnapshotLookup />)}
-    {current === 'setup' && <div className={styles.narrow}><ExperimentSettingsForm onFinalized={id => router.push(`/experiments/review/?snapshot=${encodeURIComponent(id)}`)} /><p><Link href="/experiments/planning/">AI goals and optimization tools</Link> · Currently unavailable</p></div>}
-    {current === 'assistance' && <><div className={styles.actions}><Link href="/experiments/new/">Back to manual setup</Link></div><GoalAssistant /><OptimizationPlan /></>}
+    {current === 'review' && (snapshotId ? <><p><Link href="/experiments/review/">Choose saved inputs</Link></p><SavedExperimentInputs id={snapshotId} /></> : <ExperimentRecords kind="SNAPSHOTS" title="Saved inputs" />)}
+    {current === 'setup' && <><ExperimentSettingsForm onFinalized={id => router.push(`/experiments/review/?snapshot=${encodeURIComponent(id)}`)} /><p><Link href="/experiments/planning/">AI goals and optimization tools</Link> · Currently unavailable</p></>}
+    {current === 'assistance' && <><p><Link href="/experiments/new/">Back to manual setup</Link></p><GoalAssistant /><OptimizationPlan /></>}
   </>;
 }

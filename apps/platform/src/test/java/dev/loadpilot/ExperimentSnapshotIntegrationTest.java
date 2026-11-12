@@ -420,6 +420,37 @@ class ExperimentSnapshotIntegrationTest {
         return json.readTree(mvc.perform(post("/api/experiments/drafts/" + fixture.draftId() + "/finalize").with(csrf()).contentType("application/json").content(request.toString()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.runtimeCheckRequired").value(true)).andExpect(jsonPath("$.executionAvailable").value(false)).andReturn().getResponse().getContentAsString()).get("id").asText();
     }
+    @Test void experimentLibraryListsOnlyTheCurrentOperatorsRecords() throws Exception {
+        db.update("INSERT INTO users(username,password,enabled) SELECT 'library-owner',password,true FROM users WHERE username='admin'");
+        db.update("INSERT INTO authorities(username,authority) VALUES ('library-owner','ROLE_OPERATOR')");
+        var operator = user("library-owner").roles("OPERATOR");
+        var shared = fixture(true);
+        String url = "/api/experiments/library";
+        String drafts = url + "?kind=DRAFTS";
+        var save = post("/api/experiments/drafts").with(operator).with(csrf()).contentType("application/json").content(shared.input().toString());
+        String draftId = json.readTree(mvc.perform(save).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();
+        mvc.perform(post("/api/experiments/drafts").with(operator).with(csrf()).contentType("application/json").content(shared.input().toString())).andExpect(status().isCreated());
+        var draft = new Fixture(shared.target(), shared.script(), shared.input(), draftId);
+        var preview = review(draft);
+        String snapshotId = json.readTree(mvc.perform(post("/api/experiments/drafts/" + draftId + "/finalize").with(operator).with(csrf())
+                .contentType("application/json").content(finalizeRequest(preview).toString())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("id").asText();
+        var run = runs.reserve(runRequest(), "library-owner");
+        runs.reserve(runRequest(), "admin");
+        var changed = shared.input().deepCopy().put("revision", 1);
+        mvc.perform(put("/api/experiments/drafts/" + draftId).with(csrf()).contentType("application/json").content(changed.toString())).andExpect(status().isOk());
+
+        mvc.perform(get(drafts + "&limit=1").with(operator)).andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.hasMore").value(true));
+        mvc.perform(get(drafts + "&limit=1&offset=1").with(operator)).andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.hasMore").value(false));
+        mvc.perform(get(drafts).with(operator)).andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[?(@.id == '" + draftId + "')].revision").value(org.hamcrest.Matchers.contains(2)));
+        mvc.perform(get(url + "?kind=SNAPSHOTS").with(operator)).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(snapshotId)).andExpect(jsonPath("$.items[0].scriptName").value(shared.script().name()));
+        mvc.perform(get(url + "?kind=RUNS").with(operator)).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(run.id().toString())).andExpect(jsonPath("$.items[0].status").value("QUEUED"));
+        mvc.perform(get(drafts + "&limit=101").with(operator)).andExpect(status().isBadRequest());
+        mvc.perform(get(drafts).with(anonymous())).andExpect(status().isUnauthorized());
+        mvc.perform(get(drafts).with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
+    }
     @Test void immutableInputsAndIdempotentRetrySurviveDraftTargetAndScriptEdits() throws Exception {
         var fixture = fixture(true); var preview = review(fixture); var request = finalizeRequest(preview);
         assertThat(review(fixture).get("sha256").asText()).isEqualTo(preview.get("sha256").asText());

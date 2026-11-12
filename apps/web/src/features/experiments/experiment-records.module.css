@@ -1,0 +1,18 @@
+.panel { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.panel + .panel { margin-top: 20px; }
+.header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding: 16px 20px; }
+.header h2 { margin: 0; font-size: 18px; }
+.header a { font-size: 13px; text-underline-offset: 4px; }
+.records { list-style: none; padding: 0; margin: 0; }
+.records li { border-top: 1px solid var(--line); }
+.record { display: flex; justify-content: space-between; align-items: center; gap: 8px 20px; padding: 14px 20px; color: var(--ink); text-decoration: none; }
+.records li:last-child .record { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.record:hover { background: var(--surface-hover); }
+.record:focus-visible { outline-offset: -3px; }
+.identity { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.identity span, .meta time { color: var(--muted); font-size: 12px; }
+.meta { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; font-variant-numeric: tabular-nums; }
+.meta span { text-transform: capitalize; }
+.message { color: var(--muted); margin: 0; padding: 14px 20px; border-top: 1px solid var(--line); }
+.message button { margin-top: 8px; }
+@media (max-width: 600px) { .record { display: grid; padding-inline: 14px; } .meta { justify-content: flex-start; } .header, .message { padding-inline: 14px; } }

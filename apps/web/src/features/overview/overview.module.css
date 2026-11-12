@@ -1,0 +1,2 @@
+.dashboard { display: grid; gap: 28px; min-width: 0; }
+.dashboard > * { min-width: 0; }

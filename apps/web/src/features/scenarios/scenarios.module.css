@@ -1,32 +1,25 @@
-.layout { max-width: 1040px; margin-inline: auto; min-width: 0; }
-.side { display: grid; gap: 16px; min-width: 0; }
+.layout { display: grid; grid-template-columns: minmax(244px, 0.33fr) minmax(0, 1fr); align-items: start; gap: 20px; min-width: 0; }
+.editorPane { display: grid; min-width: 0; gap: 12px; }
 .panelTitle { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .panelTitle h2 { margin: 0; }
-.planned { color: var(--warning); font: 10px var(--mono); }
-.promptLabel { display: block; margin: 18px 0 8px; color: var(--muted); font-size: 11px; }
-.panel textarea { width: 100%; min-width: 0; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--canvas); color: var(--ink); padding: 12px; font-size: 12px; line-height: 1.8; resize: vertical; }
-.approvalGuide { display: flex; align-items: flex-start; gap: 12px; padding: 8px; color: var(--muted); font-size: 11px; }
-.approvalGuide strong { color: var(--ink); font-size: 12px; font-weight: 500; }
-.approvalGuide p { margin: 6px 0 0; }
+.panelTitle > span { color: var(--muted); font-size: 12px; }
+.panel .planned { margin: 0; color: var(--warning); font-size: 12px; }
 .panel { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow); }
 .panel h2 { font-size: 14px; margin: 0 0 16px; }
 .panel p { font-size: 13px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
-.fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; padding: 0; border: 0; margin: 24px 0; }
+.fields { display: grid; gap: 12px; margin-block: 16px; }
 .fields label { font-size: 12px; font-weight: 500; }
-.sourceLabel { font-size: 12px; font-weight: 500; }
 .codeEditor { min-width: 0; width: 100%; border: 1px solid var(--line-strong); border-radius: var(--radius-md); overflow: hidden; }
-.editorToolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); background: var(--canvas); }
-.editorToolbar button { font-size: 11px; min-height: 30px; padding: 5px 8px; }
-.fileName { font: 12px monospace; margin-right: auto; padding: 4px; }
+.editorTools { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.editorTools button { font-size: 12px; padding-inline: 8px; }
+.editorTools button[aria-pressed='true'] { background: var(--primary-soft); }
 .editorHost { min-width: 0; width: 100%; overflow: hidden; }
 .editorHost :global(.cm-editor) { min-width: 0; max-width: 100%; }
 .editorStatus { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding: 8px 10px; font-size: 11px; color: var(--muted); background: var(--canvas); }
-.panel .editorHelp { margin: 0; padding: 8px 10px; font-size: 11px; }
+.panel .editorHelp { margin: 8px 0 16px; font-size: 11px; color: var(--muted); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
-.list { list-style: none; padding: 0; }
-.list button { width: 100%; text-align: left; overflow-wrap: anywhere; border: 0; border-bottom: 1px solid var(--line); padding: 12px 0; color: var(--primary); background: transparent; cursor: pointer; }
 .version { border-top: 1px solid var(--line); padding-top: 16px; }
 .version h3 { font-size: 14px; }
 .version code { overflow-wrap: anywhere; }
-@media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } .layout > form { order: -1; } }
+@media (max-width: 850px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 480px) { .panel { padding: 16px; } }

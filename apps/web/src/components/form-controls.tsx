@@ -17,20 +17,21 @@ export function TextField({ id, label, error, hint, className = '', ...props }:
     <div className={styles.field}>
       <label htmlFor={id}>{label}</label>
       <input {...props} id={id} className={`${styles.input} ${className}`}
-        aria-invalid={error ? true : undefined} aria-describedby={description || undefined} />
+        aria-invalid={error ? true : props['aria-invalid']} aria-describedby={description || undefined} />
       {hint && <span className={styles.hint} id={`${id}-hint`}>{hint}</span>}
       {error && <span className={styles.error} id={`${id}-error`}>{error}</span>}
     </div>
   );
 }
 
-export function Notice({ title, children, tone = 'info' }: {
+export function Notice({ id, title, children, tone = 'info' }: {
+  id?: string;
   title: string;
   children: React.ReactNode;
   tone?: 'info' | 'error';
 }) {
   return (
-    <div className={`${styles.notice} ${tone === 'error' ? styles.noticeError : ''}`} role={tone === 'error' ? 'alert' : 'status'}>
+    <div id={id} className={`${styles.notice} ${tone === 'error' ? styles.noticeError : ''}`} role={tone === 'error' ? 'alert' : 'status'}>
       <strong>{title}</strong><p>{children}</p>
     </div>
   );

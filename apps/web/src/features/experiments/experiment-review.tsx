@@ -121,7 +121,7 @@ export function SavedExperimentInputs({ id }: { id: string }) {
     {!snapshot && !error && <p role="status">Loading input snapshot…</p>}
     {error && <><Notice title="Cannot load snapshot" tone="error">{error}</Notice><Button onClick={() => setRetry(value => value + 1)}>Try again</Button></>}
     {snapshot && <><Notice title="Input snapshot saved">These inputs are immutable. Runtime and execution safety checks are still required before a load test can start.</Notice>
-      <p>Snapshot {snapshot.id} · finalized by {snapshot.createdBy} · {new Date(snapshot.createdAt).toLocaleString('en-GB', { timeZone: 'UTC' })}</p>
+      <p>Finalized by {snapshot.createdBy} · {new Date(snapshot.createdAt).toLocaleString('en-GB', { timeZone: 'UTC' })}</p>
       <InputDetails {...snapshot} />
       <div className={styles.actions}><Button disabled>Start experiment</Button><a href={`/experiments/new/?draft=${encodeURIComponent(snapshot.inputs.draftId)}`}>Open editable draft</a><a href="/experiments/new/">New draft</a></div>
     </>}

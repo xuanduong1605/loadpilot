@@ -21,6 +21,7 @@ export function ScenarioEditor() {
   const [saved, setSaved] = useState(false);
   const [review, setReview] = useState<ScriptReview>();
   const [acknowledged, setAcknowledged] = useState(false);
+  const [editorTools, setEditorTools] = useState<HTMLDivElement | null>(null);
   const sourceBytes = new TextEncoder().encode(source).length;
   function accept(value: Version, latestVersion: number) {
     setReview(undefined);
@@ -82,19 +83,18 @@ export function ScenarioEditor() {
     finally { setBusy(false); }
   }
   function edit() { setDirty(true); setSaved(false); setReview(undefined); setAcknowledged(false); }
-  return <div className={styles.layout}>
-    <form className={styles.panel} onSubmit={save}>
-      <div className={styles.panelTitle}><h2>Source &amp; approval</h2><span className={styles.planned} role="status">{current?.approved && !dirty ? 'Approved · bound to hash' : dirty ? 'Unsaved changes' : 'Unapproved'}</span></div><p>Keep credentials out of scripts. Saved source is retained in version history.</p>
-      <fieldset disabled={busy} className={styles.fields}>
-        <TextField id="scenario-name" label="Scenario name" value={name} required maxLength={120} readOnly={!!current} onChange={event => { setName(event.target.value); edit(); }} />
-        <span className={styles.sourceLabel}>Script source</span>
-        <CodeEditor value={source} disabled={busy} onChange={value => { setSource(value); edit(); }} />
-        <p>{sourceBytes.toLocaleString()} / 65,536 UTF-8 bytes</p>
+  return <form className={styles.layout} onSubmit={save} aria-busy={busy}>
+    <section className={styles.panel} aria-labelledby="script-settings-title">
+      <h2 id="script-settings-title">Script settings</h2>
+      <div className={styles.fields}>
+        <TextField id="scenario-name" label="Script name" value={name} required maxLength={120} disabled={busy} readOnly={!!current} onChange={event => { setName(event.target.value); edit(); }} />
+        <p className={styles.planned} role="status">{current?.approved && !dirty ? 'Approved · bound to hash' : dirty ? 'Unsaved changes' : 'Unapproved'}</p>
         {sourceBytes > 65536 && <Notice title="Script too large" tone="error">Reduce the source to 65,536 UTF-8 bytes before saving.</Notice>}
-      </fieldset>
+      </div>
       <div className={styles.actions}><Button type="submit" busy={busy} disabled={!dirty || !name.trim() || !source.trim() || sourceBytes > 65536}>Save {current ? 'new version' : 'scenario'}</Button>
       <Button variant="secondary" disabled={busy || dirty || !current} onClick={() => void checkScript()}>Check saved script</Button>
       <Button disabled={busy || dirty || !review?.syntaxValid || !review?.policyAccepted || !acknowledged || current?.approved} onClick={() => void approve()}><Icon name="lock" width={13} height={13} />Approve version</Button></div>
+      <div ref={setEditorTools} />
       {error && <Notice title="Scenario action failed" tone="error">{error}</Notice>}
       {review && <section aria-label="Script check results">
         <Notice title={review.syntaxValid && review.policyAccepted ? 'Static checks passed' : 'Script checks need attention'} tone={review.syntaxValid && review.policyAccepted ? 'info' : 'error'}>
@@ -111,6 +111,10 @@ export function ScenarioEditor() {
         <Button disabled={busy || current.version >= (latest ?? current.version)} variant="secondary" onClick={() => void open(current.scenarioId, current.version + 1)}>Newer version</Button>
         <Button disabled={busy} variant="secondary" onClick={() => void open(current.scenarioId)}>Reload latest</Button></div>
       </section>}
-    </form>
-  </div>;
+    </section>
+    <section className={styles.editorPane} aria-labelledby="script-source-title">
+      <div className={styles.panelTitle}><h2 id="script-source-title">Script source</h2><span>{sourceBytes.toLocaleString()} / 65,536 UTF-8 bytes</span></div>
+      <CodeEditor value={source} disabled={busy} toolsHost={editorTools} onChange={value => { setSource(value); edit(); }} />
+    </section>
+  </form>;
 }

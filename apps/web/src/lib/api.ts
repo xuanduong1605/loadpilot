@@ -30,7 +30,7 @@ export async function mutate<T>(path: string, method: 'POST' | 'PUT', body: unkn
 
 // Only implemented static workspace paths can be return destinations.
 export function returnPath(value: string | null): string {
-  // The bare Applications URL was a common entry point before the feature launcher.
+  // Preserve the dashboard as the sign-in destination for the old bare systems entry point.
   if (!value || value === '/targets/' || value === '/targets/?') return '/';
   const path = value.split('?')[0];
   return ['/', '/targets/', '/targets/detail/', '/scenarios/', '/scenarios/editor/', '/scenarios/assistant/',

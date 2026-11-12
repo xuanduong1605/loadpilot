@@ -6,10 +6,10 @@ import styles from '../components/workspace.module.css';
 export default function NotFound() {
   return (
     <WorkspaceShell>
-      <section className={styles.empty}>
+      <section className={`${styles.empty} ${styles.missingPage}`}>
         <h1>Page not found</h1>
         <p>Check the address for typos.</p>
-        <Link href="/" className={guide.button}>Go to All features</Link>
+        <Link href="/" className={guide.button}>Go to dashboard</Link>
       </section>
     </WorkspaceShell>
   );

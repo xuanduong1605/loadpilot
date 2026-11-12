@@ -16,12 +16,14 @@
 .metric dd small { display: inline-block; margin-left: 4px; font-size: 12px; color: var(--muted); font-weight: 400; letter-spacing: 0; }
 .metrics[data-stale='true'] dd { color: var(--muted); }
 .statusRow { display: flex; align-items: center; gap: 10px 20px; flex-wrap: wrap; padding: 0 2px; }
-.status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; background: var(--surface); padding: 6px 9px; cursor: pointer; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; background: var(--surface); padding: 6px 9px; }
 .status strong { font-weight: 500; color: var(--ink); }
 .status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
 .status[data-tone='success']::before { background: var(--success); }
 .status[data-tone='warning']::before { background: var(--warning); }
-.status[data-tone='danger']::before { background: var(--danger); }
+.status[data-tone='danger'] { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
+.status[data-tone='danger'] strong, .diagnostics [data-tone='danger'] h3 { color: var(--danger); }
+.status[data-tone='danger']::before { background: currentColor; }
 .resourcePanel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 26px; min-width: 0; }
 .panelHeading { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .panelHeading h2 { margin: 0; font-size: 16px; font-weight: 600; }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { basicSetup } from 'codemirror';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
@@ -21,8 +22,8 @@ const k6Completion = completeFromList([
   { label: '__ENV', type: 'variable', info: 'Execution environment; never embed credential values in source.' },
 ]);
 
-export default function CodeEditor({ value, onChange, disabled }: {
-  value: string; onChange: (value: string) => void; disabled: boolean;
+export default function CodeEditor({ value, onChange, disabled, toolsHost }: {
+  value: string; onChange: (value: string) => void; disabled: boolean; toolsHost: HTMLDivElement | null;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -55,7 +56,7 @@ export default function CodeEditor({ value, onChange, disabled }: {
           EditorView.contentAttributes.of({ 'aria-label': 'Script source', 'aria-describedby': 'script-editor-help', spellcheck: 'false' }),
           EditorView.theme({
             '&': { fontSize: '13px', backgroundColor: 'var(--surface)', color: 'var(--ink)' },
-            '.cm-scroller': { fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace', overflow: 'auto', minHeight: '360px', maxHeight: '620px' },
+            '.cm-scroller': { fontFamily: 'var(--mono)', overflow: 'auto', height: 'clamp(360px, 62dvh, 760px)' },
             '.cm-content': { padding: '12px 0' },
             '.cm-gutters': { backgroundColor: 'var(--surface)', color: 'var(--muted)', borderColor: 'var(--line)' },
             '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--surface-hover)' },
@@ -106,16 +107,14 @@ export default function CodeEditor({ value, onChange, disabled }: {
     action(view.current); view.current.focus();
   }
   return <div className={styles.codeEditor}>
-    <div className={styles.editorToolbar} role="group" aria-label="Script editor tools">
-      <span className={styles.fileName}>scenario.js</span>
+    {toolsHost && createPortal(<><div className={styles.editorTools} role="group" aria-label="Script editor tools">
       <Button variant="secondary" disabled={disabled || !ready} onClick={() => command(openSearchPanel)}>Find / replace</Button>
       <Button variant="secondary" disabled={disabled || !ready} onClick={() => command(indentMore)}>Indent</Button>
       <Button variant="secondary" disabled={disabled || !ready} onClick={() => command(indentLess)}>Outdent</Button>
       <Button variant="secondary" disabled={!ready} aria-pressed={wrap} onClick={() => setWrap(value => !value)}>Wrap lines</Button>
-    </div>
+    </div><p id="script-editor-help" className={styles.editorHelp}>Ctrl/Cmd+F: find · Ctrl+Space: completions · Ctrl/Cmd+Z: undo. Tab moves focus.</p></>, toolsHost)}
     {!ready && <p role="status">Loading code editor…</p>}
     <div className={styles.editorHost} ref={host} />
     <div className={styles.editorStatus}><span>JavaScript · UTF-8</span><span>Ln {position.line}, Col {position.column} · {position.lines} lines</span></div>
-    <p id="script-editor-help" className={styles.editorHelp}>Ctrl/Cmd+F: find · Ctrl+Space: completions · Ctrl/Cmd+Z: undo · Ctrl/Cmd+]: indent. Tab moves focus.</p>
   </div>;
 }

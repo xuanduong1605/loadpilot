@@ -36,7 +36,7 @@
   --primary: var(--guide-ink); --primary-hover: var(--guide-blue); --primary-soft: #eaf3f9;
   --action: var(--guide-ink); --action-hover: var(--guide-blue);
   --success: #24623c; --success-soft: #e0edda; --warning: #795019; --warning-soft: #f8e7c9;
-  --danger: #963428; --danger-soft: #f9e2d8; --shadow: none;
+  --danger: #a32638; --danger-soft: #fce6ea; --shadow: none;
   --radius-sm: 4px; --radius-md: 6px; --radius-lg: 12px; --radius-pill: 999px;
   --mono: 'Cascadia Code', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
 }

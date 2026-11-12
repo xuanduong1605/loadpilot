@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { api, mutate } from '../../lib/api';
 import { Button, Notice } from '../../components/form-controls';
 import { Icon } from '../../components/icon';
 import { StatusBadge } from '../../components/console-ui';
 import { TelemetryChart, type TelemetryPoint } from './telemetry-chart';
+import { ExperimentRecords } from './experiment-records';
 import styles from '../../components/console-ui.module.css';
 
 type Run = { id: string; status: string; revision: number; targetId: string; snapshotId: string; attemptId: string; shardId: string; workerName: string; workerUid: string | null; workerState: string | null; verdict: string; deadlineAt: string; operations: { id: string; kind: string; status: string }[] };
@@ -21,9 +23,7 @@ const fresh = (at: string | null, age: number) => at !== null && Number.isFinite
 export function LiveMonitor() {
   const [panel, setPanel] = useState<'metrics' | 'evidence' | 'stop'>('metrics');
   const query = useSearchParams();
-  const router = useRouter();
   const runId = query.get('run') ?? '';
-  const [input, setInput] = useState(runId);
   const [run, setRun] = useState<Run>();
   const [metrics, setMetrics] = useState<Metric>();
   const [httpPoints, setHttpPoints] = useState<TelemetryPoint[]>([]);
@@ -36,7 +36,7 @@ export function LiveMonitor() {
   const [stopError, setStopError] = useState('');
   const [now, setNow] = useState(0);
   const currentId = useRef(runId); currentId.current = runId;
-  useEffect(() => { setInput(runId); setRun(undefined); setMetrics(undefined); setHttpPoints([]); setCpuPoints([]); setConfirmStop(false); setStopError(''); setStopping(false); }, [runId]);
+  useEffect(() => { setRun(undefined); setMetrics(undefined); setHttpPoints([]); setCpuPoints([]); setError(''); setConfirmStop(false); setStopError(''); setStopping(false); }, [runId]);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 5000); return () => window.clearInterval(timer); }, []);
   useEffect(() => {
     if (!runId || !uuid.test(runId)) return;
@@ -75,28 +75,47 @@ export function LiveMonitor() {
     catch (reason) { if (currentId.current === run.id) setStopError(reason instanceof Error ? reason.message : 'Could not send the stop request.'); }
     finally { if (currentId.current === run.id) setStopping(false); }
   }
-  function open(event: FormEvent) { event.preventDefault(); if (uuid.test(input.trim())) router.replace(`/experiments/?view=live&run=${encodeURIComponent(input.trim())}`); }
   const httpReady = !error && metrics?.http.state === 'READY' && fresh(metrics.http.collectedAt, 30000) && metrics.http.identity?.runId === run?.id && metrics.http.identity?.attemptId === run?.attemptId && metrics.http.identity?.shardId === run?.shardId && metrics.http.identity?.jobUid === run?.workerUid;
   const cpuReady = !error && metrics?.resources.state === 'READY' && fresh(metrics.resources.collectedAt, 30000) && fresh(metrics.resources.oldestSampleAt, 120000);
   const stale = metrics && (now || Date.now()) - Date.parse(metrics.http.collectedAt) > 30000;
+  const requestedRps = metrics && ['requests/s', 'HTTP_REQUESTS_PER_SECOND'].includes(metrics.requestedLoadUnit);
+  if (!uuid.test(runId)) return <>
+    {runId && <Notice title="Cannot open this run" tone="error">Choose a run from the list below.</Notice>}
+    <ExperimentRecords kind="RUNS" title="Choose a run" />
+  </>;
   return <>
-    <section className={styles.panel}><div className={styles.panelHead}><h2>Execution session</h2><StatusBadge tone={run?.status === 'RUNNING' ? 'info' : run?.status === 'RECOVERY_REQUIRED' ? 'danger' : 'neutral'}>{run?.status ?? 'No run selected'}</StatusBadge></div><form className={styles.filters} onSubmit={open}>
-      <label style={{ flex: '1 1 400px' }}>Run ID<input value={input} onChange={event => setInput(event.target.value)} placeholder="UUID of an existing run" required pattern="[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}" /></label><Button type="submit" disabled={!uuid.test(input.trim())}>Monitor run</Button><Button variant="secondary" disabled={!runId || !uuid.test(runId) || loading} onClick={() => setRetry(value => value + 1)}><Icon name="refresh" width={13} height={13} />Reload</Button>
-    </form>{runId && !uuid.test(runId) && <div className={styles.body}><Notice title="Invalid run ID" tone="error">Enter the complete run UUID to monitor execution.</Notice></div>}{error && <div className={styles.body}><Notice title="Cannot update run" tone="error">{error} Previously collected data is not a new observation.</Notice></div>}
-      <div className={styles.footnote}><span role="status">{loading ? 'Updating…' : run ? 'Auto-updates for this run · paused while the tab is hidden' : 'Select a run to monitor it. Monitoring does not generate load.'}</span><span>UTC · {stale ? 'Data is stale' : 'Best-effort live / not an SLO result'}</span></div>
-    </section>
-    {run && <><div className={styles.actions} role="group" aria-label="Run sections">{(['metrics', 'evidence', 'stop'] as const).map(value => <Button key={value} variant="secondary" aria-pressed={panel === value} onClick={() => setPanel(value)}>{value === 'metrics' ? 'Metrics' : value === 'evidence' ? 'Evidence & logs' : 'Stop run'}</Button>)}</div><div hidden={panel !== 'evidence'}><ol className={styles.stepper} aria-label="Expected experiment phases">{[['Warm-up', 'Phase data unavailable'], ['Measuring', 'Phase data unavailable'], ['Applying Candidate', 'Optimization unavailable'], ['Rollback', 'Restoration not verified']].map(([title, subtitle], index) => <li key={title}><span>{index + 1}</span><div>{title}<small>{subtitle}</small></div></li>)}</ol>
-    <p className={styles.note}>A RUNNING Job does not establish its phase. Execution, SLO and restoration are verified separately.</p>
-    </div><div hidden={panel !== 'metrics'}><dl className={styles.summary} style={{ marginTop: 20 }}><div><dt>Requested load</dt><dd>{number(metrics?.requestedMeasurementRate)}</dd><small>{metrics?.requestedLoadUnit ?? 'Unit unavailable'}</small></div><div><dt>Achieved HTTP rate</dt><dd>{number(httpReady ? metrics?.http.requestsPerSecond : null)}</dd><small>HTTP requests/s · recent window</small></div><div><dt>p95 HTTP duration</dt><dd>{number(httpReady ? metrics?.http.p95LatencyMs : null)}</dd><small>ms · SLO unevaluated</small></div><div><dt>Actual CPU usage</dt><dd>{number(cpuReady ? metrics?.resources.cpuMillicores : null)}</dd><small>millicores · selected container</small></div></dl>
-    <div className={styles.grid}>
-      <section className={styles.panel}><div className={styles.panelHead}><h2>Requested vs. Achieved RPS</h2><StatusBadge>{httpReady ? 'Latest observation' : 'No data yet'}</StatusBadge></div><TelemetryChart points={error || stale ? [] : httpPoints} unit="HTTP requests/s" /><div className={styles.footnote}>Iterations/s cannot be converted to RPS without the request count per iteration.</div></section>
-      <section className={styles.panel}><div className={styles.panelHead}><h2>Allocated vs. Actual CPU</h2><StatusBadge>{cpuReady ? 'Latest observation' : 'No data yet'}</StatusBadge></div><TelemetryChart points={error || !cpuReady ? [] : cpuPoints} unit="millicores" requestedLabel="Allocated CPU request" actualLabel="Actual CPU usage" /><div className={styles.footnote}>CPU requests describe allocation, not consumption or cloud cost.</div></section>
+    <div className={styles.monitorToolbar}>
+      {run && <div className={styles.actions} role="group" aria-label="Run sections">{(['metrics', 'evidence', 'stop'] as const).map(value => <Button key={value} variant="secondary" aria-pressed={panel === value} onClick={() => setPanel(value)}>{value === 'metrics' ? 'Metrics' : value === 'evidence' ? 'Evidence' : 'Stop run'}</Button>)}</div>}
+      <div className={styles.actions}>
+        <span role="status"><StatusBadge tone={run?.status === 'RUNNING' ? 'info' : run && ['FAILED', 'RECOVERY_REQUIRED'].includes(run.status) ? 'danger' : 'neutral'}>{run?.status ?? 'Awaiting run status'}</StatusBadge></span>
+        <Link className={styles.secondary} href="/experiments/monitor/">Choose another run</Link>
+        <Button variant="secondary" disabled={loading} onClick={() => setRetry(value => value + 1)}><Icon name="refresh" width={13} height={13} />Reload</Button>
+      </div>
     </div>
-    </div><div hidden={panel !== 'evidence'}><div className={styles.grid}><section className={styles.panel}><div className={styles.panelHead}><h2>k6 Job logs</h2><StatusBadge>Log stream unavailable</StatusBadge></div>{run.workerName && <div className={styles.terminal}><p>Job: {run.workerName}<br />Worker state: {run.workerState ?? 'Not observed'}</p></div>}</section>
-      <section className={styles.panel}><div className={styles.panelHead}><h2>Scope & provenance</h2><StatusBadge>UNEVALUATED</StatusBadge></div><div className={styles.body}><dl className={styles.meta}><dt>Run</dt><dd>{run?.id ?? '—'}</dd><dt>Attempt</dt><dd>{run?.attemptId ?? '—'}</dd><dt>Shard</dt><dd>{run?.shardId ?? '—'}</dd><dt>HTTP</dt><dd>{metrics?.http.source ?? 'No source available'}</dd><dt>Window · UTC</dt><dd>{metrics?.http.windowFrom ?? '—'} → {metrics?.http.windowUntil ?? '—'}</dd><dt>CPU</dt><dd>{metrics?.resources.source ?? 'No source available'}</dd><dt>Restoration</dt><dd>No verified evidence</dd></dl></div></section></div>
-    </div><div hidden={panel !== 'stop'}><section className={styles.stopbar} aria-labelledby="stop-title"><div><h2 id="stop-title">Stop & restore</h2><p>A stop request does not confirm worker termination. Restoration remains unverified.</p></div><div className={styles.actions}><Button variant="danger" disabled={!run || terminal(run.status) || stopping} onClick={() => setConfirmStop(true)}><Icon name="stop" width={14} height={14} />Request stop</Button><Button variant="secondary" disabled>Rollback unavailable</Button></div></section>
-    {confirmStop && <section className={styles.panel} style={{ marginTop: 16 }} aria-label="Confirm run stop"><div className={styles.body}><h2>Stop this run?</h2><p className={styles.muted}>This request applies only to <code>{run?.id}</code>. Keep monitoring STOPPING until termination is confirmed.</p><div className={styles.actions}><Button variant="danger" busy={stopping} onClick={() => void stop()}>Confirm stop</Button><Button variant="secondary" disabled={stopping} onClick={() => setConfirmStop(false)}>Cancel</Button></div></div></section>}
-    {stopError && <Notice title="Stop request not confirmed" tone="error">{stopError} Check the run status before retrying.</Notice>}
-    </div></>}
+    {error && <Notice title="Cannot update run" tone="error">{error}</Notice>}
+    {run && <>
+      <div hidden={panel !== 'metrics'}>
+        {stale && <Notice title="HTTP observations are stale">A current measurement is unavailable.</Notice>}
+        <dl className={styles.summary}><div><dt>Requested load</dt><dd>{number(metrics?.requestedMeasurementRate)}</dd><small>{metrics?.requestedLoadUnit ?? 'Unit unavailable'}</small></div><div><dt>Achieved HTTP rate</dt><dd>{number(httpReady ? metrics?.http.requestsPerSecond : null)}</dd><small>HTTP requests/s</small></div><div><dt>p95 HTTP duration</dt><dd>{number(httpReady ? metrics?.http.p95LatencyMs : null)}</dd><small>ms</small></div><div><dt>CPU usage</dt><dd>{number(cpuReady ? metrics?.resources.cpuMillicores : null)}</dd><small>millicores · selected container</small></div></dl>
+        <div className={styles.grid}>
+          <section className={styles.panel}><div className={styles.panelHead}><h2>HTTP throughput</h2></div><TelemetryChart points={error || stale ? [] : httpPoints} unit="HTTP requests/s" requestedLabel={requestedRps ? 'Requested' : null} /></section>
+          <section className={styles.panel}><div className={styles.panelHead}><h2>CPU usage</h2></div><TelemetryChart points={error || !cpuReady ? [] : cpuPoints} unit="millicores" requestedLabel="CPU request" actualLabel="Measured usage" /></section>
+        </div>
+      </div>
+      <div hidden={panel !== 'evidence'}>
+        <section className={styles.panel}>
+          <div className={styles.panelHead}><h2>Run evidence</h2><Link href={`/experiments/review/?snapshot=${encodeURIComponent(run.snapshotId)}`}>Open saved inputs</Link></div>
+          <div className={styles.body}><dl className={styles.meta}><dt>Worker</dt><dd>{run.workerName} · {run.workerState ?? 'Not observed'}</dd><dt>HTTP source</dt><dd>{metrics?.http.source ?? 'Unavailable'}</dd><dt>Window (UTC)</dt><dd>{metrics?.http.windowFrom && metrics.http.windowUntil ? `${metrics.http.windowFrom} → ${metrics.http.windowUntil}` : 'Unavailable'}</dd><dt>CPU source</dt><dd>{metrics?.resources.source ?? 'Unavailable'}</dd><dt>SLO verdict</dt><dd>{run.verdict}</dd><dt>Restoration</dt><dd>Unverified</dd></dl></div>
+          <div className={styles.body}><details><summary>Run identifiers</summary><dl className={styles.meta}><dt>Run</dt><dd>{run.id}</dd><dt>Attempt</dt><dd>{run.attemptId}</dd><dt>Shard</dt><dd>{run.shardId}</dd></dl></details></div>
+        </section>
+      </div>
+      <div hidden={panel !== 'stop'}>
+        <section className={styles.stopbar} aria-labelledby="stop-title">
+          <div><h2 id="stop-title">{confirmStop ? 'Stop this run?' : 'Stop run'}</h2><p>{terminal(run.status) ? 'This run has ended.' : 'Keep monitoring until worker termination is confirmed.'}</p></div>
+          <div className={styles.actions}>{confirmStop ? <><Button variant="danger" busy={stopping} onClick={() => void stop()}>Confirm stop</Button><Button variant="secondary" disabled={stopping} onClick={() => setConfirmStop(false)}>Cancel</Button></> : <Button variant="danger" disabled={terminal(run.status) || stopping} onClick={() => setConfirmStop(true)}><Icon name="stop" width={14} height={14} />Request stop</Button>}</div>
+        </section>
+        {stopError && <Notice title="Stop request not confirmed" tone="error">{stopError}</Notice>}
+      </div>
+    </>}
   </>;
 }

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button, Notice, TextField } from '../../components/form-controls';
 import { api, mutate } from '../../lib/api';
-import type { TargetPage } from '../targets/types';
+import type { Target, TargetPage } from '../targets/types';
 import styles from './settings.module.css';
 import { ExperimentReview, type Draft } from './experiment-review';
 import { LoadProfileEditor, encodeProfile, profileValues } from './load-profile';
@@ -35,7 +35,7 @@ const executionFields = [
 
 type Review = { valid: boolean; errors: string[]; maximumAttemptSeconds: number; reservedAttemptsPerLoad: number };
 type ScenarioPage = { items: { id: string; name: string; latestVersion: number }[]; total: number };
-type ScriptVersion = { name: string; sha256: string; approved: boolean };
+type ScriptVersion = { scenarioId: string; name: string; version: number; sha256: string; approved: boolean };
 
 export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: string) => void }) {
   const [step, setStep] = useState(0);
@@ -66,6 +66,16 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
   const [scenarioError, setScenarioError] = useState('');
   const [script, setScript] = useState<ScriptVersion>();
   const [scriptError, setScriptError] = useState('');
+  const [selectedTarget, setSelectedTarget] = useState<Target>();
+  const [latestScript, setLatestScript] = useState<ScriptVersion>();
+  const [versionLimit, setVersionLimit] = useState(25);
+  const listedTarget = targets?.items.find(item => item.id === targetId);
+  const listedScript = scenarios?.items.find(item => item.id === scenarioId);
+  const targetName = listedTarget?.name ?? (selectedTarget?.id === targetId ? selectedTarget.name : undefined);
+  const latest = latestScript?.scenarioId === scenarioId ? latestScript : undefined;
+  const scriptName = listedScript?.name ?? latest?.name ?? (script?.scenarioId === scenarioId ? script.name : undefined);
+  const newestVersion = Math.max(listedScript?.latestVersion ?? latest?.version ?? 0, Number(scenarioVersion));
+  const versions = Array.from({ length: Math.min(versionLimit, newestVersion) }, (_, index) => newestVersion - index);
   useEffect(() => {
     let active = true; setScenarios(undefined); setScenarioError('');
     void api<ScenarioPage>(`/api/scenarios?offset=${scenarioOffset}&limit=12`).then(value => { if (active) setScenarios(value); })
@@ -88,6 +98,18 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
       .catch(reason => { if (active) setTargetError(reason.message); });
     return () => { active = false; };
   }, [offset, targetRetry]);
+  useEffect(() => {
+    if (!targetId || !targets || listedTarget) return;
+    let active = true;
+    void api<Target>(`/api/targets/${encodeURIComponent(targetId)}`).then(value => { if (active && value.id === targetId) setSelectedTarget(value); }).catch(() => {});
+    return () => { active = false; };
+  }, [targetId, targets, listedTarget]);
+  useEffect(() => {
+    if (!scenarioId || !scenarios || listedScript) return;
+    let active = true;
+    void api<ScriptVersion>(`/api/scenarios/${encodeURIComponent(scenarioId)}`).then(value => { if (active && value.scenarioId === scenarioId) setLatestScript(value); }).catch(() => {});
+    return () => { active = false; };
+  }, [scenarioId, scenarios, listedScript]);
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('draft');
     if (!id) return;
@@ -142,7 +164,7 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
       <label htmlFor="experiment-system">System</label>
       <select id="experiment-system" value={targetId} onChange={event => setTargetId(event.target.value)}>
         <option value="">Choose a registered system</option>
-        {targetId && !targets?.items.some(target => target.id === targetId) && <option value={targetId}>Selected system ({targetId})</option>}
+        {targetId && !listedTarget && <option value={targetId}>{targetName ?? 'Selected system'}</option>}
         {targets?.items.map(target => <option key={target.id} value={target.id}>{target.name} ({target.environment})</option>)}
       </select>
       {!targets && !targetError && <p role="status">Loading systems…</p>}
@@ -152,18 +174,23 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
         <p>{targets.total ? `Systems ${offset + 1}–${Math.min(offset + 12, targets.total)} of ${targets.total}` : 'Register a system before saving a draft.'}</p></div>}
       <label htmlFor="experiment-scenario">Scenario</label>
       <select id="experiment-scenario" value={scenarioId} onChange={event => {
-        setScenarioId(event.target.value); setScenarioVersion(String(scenarios?.items.find(item => item.id === event.target.value)?.latestVersion ?? ''));
+        setScenarioId(event.target.value); setScenarioVersion(String(scenarios?.items.find(item => item.id === event.target.value)?.latestVersion ?? '')); setVersionLimit(25);
       }}>
         <option value="">Choose a scenario (required for finalization)</option>
-        {scenarioId && !scenarios?.items.some(item => item.id === scenarioId) && <option value={scenarioId}>Selected scenario ({scenarioId})</option>}
+        {scenarioId && !listedScript && <option value={scenarioId}>{scriptName ?? 'Selected script'}</option>}
         {scenarios?.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>
       {!scenarios && !scenarioError && <p role="status">Loading scenarios…</p>}
       {scenarioError && <><Notice title="Cannot load scenarios" tone="error">{scenarioError}</Notice><Button onClick={() => setScenarioRetry(value => value + 1)}>Retry scenarios</Button></>}
       {scenarios && scenarios.total > 12 && <div><Button variant="secondary" disabled={!scenarioOffset} onClick={() => setScenarioOffset(value => Math.max(0, value - 12))}>Previous scenarios</Button>{' '}
         <Button variant="secondary" disabled={scenarioOffset + 12 >= scenarios.total} onClick={() => setScenarioOffset(value => value + 12)}>Next scenarios</Button></div>}
-      <TextField id="experiment-scenario-version" label="Exact script version" type="number" min={1} step={1} required={!!scenarioId} disabled={!scenarioId}
-        value={scenarioVersion} onChange={event => setScenarioVersion(event.target.value)} />
+      <label htmlFor="experiment-scenario-version">Exact script version</label>
+      <select id="experiment-scenario-version" required={!!scenarioId} disabled={!scenarioId} value={scenarioVersion} onChange={event => setScenarioVersion(event.target.value)}>
+        <option value="">Choose a version</option>
+        {scenarioVersion && !versions.includes(Number(scenarioVersion)) && <option value={scenarioVersion}>Version {scenarioVersion}</option>}
+        {versions.map(version => <option key={version} value={version}>Version {version}</option>)}
+      </select>
+      {newestVersion > versionLimit && <div><Button variant="secondary" onClick={() => setVersionLimit(value => value + 25)}>Show earlier versions</Button></div>}
       {scriptError && <Notice title="Cannot load script version" tone="error">{scriptError}</Notice>}
       {script && <p>{script.name} · {script.approved ? 'Approved saved version' : 'Unapproved saved version'}<br />SHA-256: <code>{script.sha256}</code></p>}
       <a href={scenarioId ? `/scenarios/?id=${encodeURIComponent(scenarioId)}&version=${encodeURIComponent(scenarioVersion)}` : '/scenarios/'}>Edit or approve scenario</a>
@@ -195,7 +222,7 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
       {draft && !draft.executionBounds && <Notice title="Execution limits needed">This older draft has no recorded execution limits. Complete these fields and save a new revision before reviewing it.</Notice>}
     </fieldset>
     </div>
-    <div hidden={step !== 4}><h3>Review your configuration</h3><dl className={styles.details}><dt>Target</dt><dd>{targets?.items.find(item => item.id === targetId)?.name ?? (targetId || 'Not selected')}</dd><dt>Script</dt><dd>{script ? script.name + ' · version ' + scenarioVersion : 'Not selected'}</dd>{fields.map(([key, label]) => <div key={key} className={styles.reviewRow}><dt>{label}</dt><dd>{values[key] || 'Not entered'}</dd></div>)}{executionFields.map(([key, label]) => <div key={key} className={styles.reviewRow}><dt>{label}</dt><dd>{executionValues[key] || (key === 'precisionIterationsPerSecond' && profile.mode === 'SINGLE_RUN' ? 'Not applicable' : 'Not entered')}</dd></div>)}</dl>
+    <div hidden={step !== 4}><h3>Review your configuration</h3><dl className={styles.details}><dt>Target</dt><dd>{targetName ?? (targetId ? 'Selected system' : 'Not selected')}</dd><dt>Script</dt><dd>{scriptName && scenarioVersion ? `${scriptName} · version ${scenarioVersion}` : 'Not selected'}</dd>{fields.map(([key, label]) => <div key={key} className={styles.reviewRow}><dt>{label}</dt><dd>{values[key] || 'Not entered'}</dd></div>)}{executionFields.map(([key, label]) => <div key={key} className={styles.reviewRow}><dt>{label}</dt><dd>{executionValues[key] || (key === 'precisionIterationsPerSecond' && profile.mode === 'SINGLE_RUN' ? 'Not applicable' : 'Not entered')}</dd></div>)}</dl>
     <div className={styles.actions}><Button type="submit" busy={busy} disabled={reviewBusy}>Validate settings</Button>
     <Button type="submit" name="action" value="save" disabled={busy || reviewBusy || !targetId}>Save draft</Button>
     <Button disabled title="Runtime checks and execution are not implemented">Start experiment</Button>
@@ -203,7 +230,7 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
     </div>
     {error && <Notice title="Validation unavailable" tone="error">{error}</Notice>}
     {saved && <Notice title="Draft saved">Bookmark this page to reopen the saved settings. Saving does not approve or start a load test.</Notice>}
-    {draft && <p>Draft {draft.id}, revision {draft.revision}. <a href={`/experiments/?draft=${encodeURIComponent(draft.id)}`}>Reload saved draft</a></p>}
+    {draft && <p>Draft revision {draft.revision}. <a href={`/experiments/new/?draft=${encodeURIComponent(draft.id)}`}>Reload saved draft</a></p>}
     {review && (review.valid ? <Notice title="Settings validated">Each attempt has a {review.maximumAttemptSeconds} s ceiling. The budget reserves {review.reservedAttemptsPerLoad} attempts per tested load. Validation does not save or approve inputs.</Notice>
       : <Notice title="Review settings" tone="error">{review.errors.join(' ')}</Notice>)}
     <div className={styles.stepActions}><Button variant="secondary" disabled={step === 0 || busy || reviewBusy} onClick={() => goToStep(step - 1)}>Back</Button><span>Step {step + 1} of {stepNames.length}</span>{step < 4 && <Button disabled={busy || reviewBusy} onClick={() => goToStep(step + 1)}>Continue</Button>}</div>

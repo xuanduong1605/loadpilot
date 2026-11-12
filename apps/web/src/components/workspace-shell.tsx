@@ -1,20 +1,56 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { BrandLink } from './brand-link';
-import { Icon } from './icon';
+import { Icon, type IconName } from './icon';
 import styles from './workspace.module.css';
 import guide from './task-guide.module.css';
+const destinations: { href: string; label: string; icon: IconName }[] = [
+  { href: '/', label: 'Dashboard', icon: 'grid' },
+  { href: '/targets/', label: 'Systems', icon: 'server' },
+  { href: '/scenarios/', label: 'Scripts', icon: 'scenarios' },
+  { href: '/experiments/', label: 'Experiments', icon: 'experiments' },
+  { href: '/settings/', label: 'Settings', icon: 'settings' },
+];
+const wideScreen = '(min-width: 1000px)';
+function subscribeToScreen(callback: () => void) {
+  const media = window.matchMedia(wideScreen);
+  media.addEventListener('change', callback);
+  return () => media.removeEventListener('change', callback);
+}
+
 export function WorkspaceShell({ children, account }: { children: React.ReactNode; account?: React.ReactNode }) {
   const pathname = usePathname();
-  const feature = pathname.startsWith('/targets') ? 'Applications' : pathname.startsWith('/scenarios') ? 'Scripts' : pathname.startsWith('/experiments') || pathname.startsWith('/comparisons') ? 'Experiments' : pathname.startsWith('/settings') ? 'Settings' : '';
-  return <div className={`${styles.workspace} ${guide.theme}`}>
+  const wide = useSyncExternalStore(subscribeToScreen, () => window.matchMedia(wideScreen).matches, () => true);
+  const [preference, setPreference] = useState<boolean>();
+  const expanded = preference ?? wide;
+  const toggle = useRef<HTMLButtonElement>(null);
+  return <div className={`${styles.workspace} ${guide.theme}`} data-navigation={preference === undefined ? 'auto' : expanded ? 'expanded' : 'collapsed'}>
     <a className="skip-link" href="#main-content">Skip to content</a>
     <header className={styles.topbar}>
+      <button ref={toggle} type="button" className={styles.toggle} aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'} aria-expanded={expanded} aria-controls="workspace-navigation" onClick={() => setPreference(!expanded)}>
+        <Icon name="panel" />
+      </button>
       <BrandLink />
-      {feature && <nav className={styles.breadcrumb} aria-label="Workspace"><Link href="/"><Icon name="grid" width={16} height={16} /><span>All features</span></Link><span aria-hidden="true">/</span><span>{feature}</span></nav>}
       <div className={styles.accountArea}>{account}</div>
     </header>
-    <main id="main-content" className={styles.content} tabIndex={-1}>{children}</main>
+    <div className={styles.body}>
+      <aside className={styles.sidebar} onKeyDown={event => {
+        if (event.key === 'Escape' && expanded) { setPreference(false); toggle.current?.focus(); }
+      }}>
+        <nav id="workspace-navigation" aria-label="Workspace">
+          {destinations.map(({ href, label, icon }) => {
+            const active = href === '/' ? pathname === '/' : pathname.startsWith(href) || (href === '/experiments/' && pathname.startsWith('/comparisons/'));
+            return <Link key={href} href={href} aria-label={label} title={label} aria-current={active ? 'page' : undefined} onClick={() => {
+              if (window.matchMedia('(max-width: 700px)').matches) setPreference(false);
+            }}>
+              <Icon name={icon} /><span>{label}</span>
+            </Link>;
+          })}
+        </nav>
+      </aside>
+      <main id="main-content" className={styles.content} tabIndex={-1}>{children}</main>
+    </div>
   </div>;
 }

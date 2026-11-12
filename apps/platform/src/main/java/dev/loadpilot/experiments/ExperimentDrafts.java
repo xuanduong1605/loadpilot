@@ -93,7 +93,7 @@ public class ExperimentDrafts {
             catch (JsonProcessingException error) { throw new IllegalStateException(error); }
             if (id == null) {
                 id = UUID.randomUUID();
-                db.update("INSERT INTO experiment_draft(id,target_id,settings,scenario_id,scenario_version,execution_bounds,load_profile,slo_policy) VALUES (?,?,?::jsonb,?,?,?::jsonb,?::jsonb,?::jsonb)", id, input.targetId(), settings, input.scenarioId(), input.scenarioVersion(), bounds, profile, slo);
+                db.update("INSERT INTO experiment_draft(id,target_id,settings,scenario_id,scenario_version,execution_bounds,load_profile,slo_policy,created_by) VALUES (?,?,?::jsonb,?,?,?::jsonb,?::jsonb,?::jsonb,?)", id, input.targetId(), settings, input.scenarioId(), input.scenarioVersion(), bounds, profile, slo, actor);
             } else {
                 if (input.revision() == null) throw new Problem(400, "Provide the draft revision.");
                 if (db.update("UPDATE experiment_draft SET target_id=?,settings=?::jsonb,scenario_id=?,scenario_version=?,execution_bounds=?::jsonb,load_profile=?::jsonb,slo_policy=?::jsonb,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND revision=?",
