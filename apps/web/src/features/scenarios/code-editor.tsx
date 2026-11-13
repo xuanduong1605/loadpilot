@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { basicSetup } from 'codemirror';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
@@ -12,6 +11,7 @@ import { openSearchPanel } from '@codemirror/search';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { Button } from '../../components/form-controls';
+import { Icon } from '../../components/icon';
 import styles from './scenarios.module.css';
 
 const k6Completion = completeFromList([
@@ -22,10 +22,11 @@ const k6Completion = completeFromList([
   { label: '__ENV', type: 'variable', info: 'Execution environment; never embed credential values in source.' },
 ]);
 
-export default function CodeEditor({ value, onChange, disabled, toolsHost }: {
-  value: string; onChange: (value: string) => void; disabled: boolean; toolsHost: HTMLDivElement | null;
+export default function CodeEditor({ value, onChange, disabled, sourceSize }: {
+  value: string; onChange: (value: string) => void; disabled: boolean; sourceSize: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
+  const help = useRef<HTMLDetailsElement>(null);
   const view = useRef<EditorView | null>(null);
   const change = useRef(onChange);
   const external = useRef(false);
@@ -53,10 +54,10 @@ export default function CodeEditor({ value, onChange, disabled, toolsHost }: {
             { tag: [tags.function(tags.variableName), tags.definition(tags.variableName)], color: 'var(--primary-hover)' },
           ])),
           editing.current.of([]), wrapping.current.of([]),
-          EditorView.contentAttributes.of({ 'aria-label': 'Script source', 'aria-describedby': 'script-editor-help', spellcheck: 'false' }),
+          EditorView.contentAttributes.of({ 'aria-label': 'Script source', spellcheck: 'false' }),
           EditorView.theme({
             '&': { fontSize: 'var(--text-code)', backgroundColor: 'var(--surface)', color: 'var(--ink)' },
-            '.cm-scroller': { fontFamily: 'var(--mono)', overflow: 'auto', height: 'clamp(360px, 62dvh, 760px)' },
+            '.cm-scroller': { fontFamily: 'var(--mono)', overflow: 'auto' },
             '.cm-content': { padding: '12px 0' },
             '.cm-gutters': { backgroundColor: 'var(--surface)', color: 'var(--muted)', borderColor: 'var(--line)' },
             '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--surface-hover)' },
@@ -106,15 +107,39 @@ export default function CodeEditor({ value, onChange, disabled, toolsHost }: {
     if (!view.current) return;
     action(view.current); view.current.focus();
   }
-  return <div className={styles.codeEditor}>
-    {toolsHost && createPortal(<><div className={styles.editorTools} role="group" aria-label="Script editor tools">
-      <Button variant="secondary" disabled={disabled || !ready} onClick={() => command(openSearchPanel)}>Find / replace</Button>
-      <Button variant="secondary" disabled={disabled || !ready} onClick={() => command(indentMore)}>Indent</Button>
-      <Button variant="secondary" disabled={disabled || !ready} onClick={() => command(indentLess)}>Outdent</Button>
-      <Button variant="secondary" disabled={!ready} aria-pressed={wrap} onClick={() => setWrap(value => !value)}>Wrap lines</Button>
-    </div><p id="script-editor-help" className={styles.editorHelp}>Ctrl/Cmd+F: find · Ctrl+Space: completions · Ctrl/Cmd+Z: undo. Tab moves focus.</p></>, toolsHost)}
-    {!ready && <p role="status">Loading code editor…</p>}
-    <div className={styles.editorHost} ref={host} />
-    <div className={styles.editorStatus}><span>JavaScript · UTF-8</span><span>Ln {position.line}, Col {position.column} · {position.lines} lines</span></div>
-  </div>;
+  return <section className={styles.editorPane} aria-labelledby="script-source-title" onKeyDown={event => {
+    if (event.key === 'Escape' && help.current?.open) {
+      help.current.open = false;
+      help.current.querySelector('summary')?.focus();
+    }
+  }}>
+    <div className={styles.editorHeader}>
+      <div className={styles.panelTitle}>
+        <h2 id="script-source-title">Script source</h2>
+        <details className={styles.help} ref={help}>
+          <summary className={styles.compactButton} aria-label="Editor help" title="Editor help"><Icon name="help" width={18} height={18} /></summary>
+          <div className={styles.helpBody}>
+            <h3>Keyboard shortcuts</h3>
+            <dl>
+              <dt>Find / replace</dt><dd><kbd>Ctrl/Cmd+F</kbd></dd>
+              <dt>Completions</dt><dd><kbd>Ctrl+Space</kbd></dd>
+              <dt>Undo</dt><dd><kbd>Ctrl/Cmd+Z</kbd></dd>
+              <dt>Move focus</dt><dd><kbd>Tab</kbd></dd>
+            </dl>
+          </div>
+        </details>
+      </div>
+      <div className={styles.editorTools} role="group" aria-label="Script editor tools">
+        <Button className={styles.compactButton} variant="secondary" disabled={disabled || !ready} onClick={() => command(openSearchPanel)}>Find / replace</Button>
+        <Button className={styles.compactButton} variant="secondary" disabled={disabled || !ready} onClick={() => command(indentMore)}>Indent</Button>
+        <Button className={styles.compactButton} variant="secondary" disabled={disabled || !ready} onClick={() => command(indentLess)}>Outdent</Button>
+        <Button className={styles.compactButton} variant="secondary" disabled={!ready} aria-pressed={wrap} onClick={() => setWrap(value => !value)}>Wrap lines</Button>
+      </div>
+    </div>
+    <div className={styles.codeEditor}>
+      {!ready && <p className={styles.loading} role="status">Loading code editor…</p>}
+      <div className={styles.editorHost} ref={host} />
+      <div className={styles.editorStatus}><span>{sourceSize}</span><span>Ln {position.line}, Col {position.column} · {position.lines} lines</span></div>
+    </div>
+  </section>;
 }

@@ -22,7 +22,6 @@ export function ScenarioEditor() {
   const [saved, setSaved] = useState(false);
   const [review, setReview] = useState<ScriptReview>();
   const [acknowledged, setAcknowledged] = useState(false);
-  const [editorTools, setEditorTools] = useState<HTMLDivElement | null>(null);
   const sourceBytes = new TextEncoder().encode(source).length;
   function accept(value: Version, latestVersion: number) {
     setReview(undefined);
@@ -88,39 +87,42 @@ export function ScenarioEditor() {
     <PageHeading title="Script editor" back={{ href: '/scenarios/', label: 'Back to scripts' }} actions={current && <RecordMetadata name={current.name}>
       Version {current.version} · Saved by {current.createdBy} · <time dateTime={current.createdAt}>{new Date(current.createdAt).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</time>
     </RecordMetadata>} />
-    <form className={styles.layout} onSubmit={save} aria-busy={busy}>
-    <section className={styles.panel} aria-labelledby="script-settings-title">
-      <h2 id="script-settings-title">Script settings</h2>
-      <div className={styles.fields}>
+    <form className={styles.layout} data-script-editor onSubmit={save} aria-busy={busy}>
+      <section className={styles.panel} aria-labelledby="script-settings-title" tabIndex={0}>
+        <h2 id="script-settings-title">Script settings</h2>
         <TextField id="scenario-name" label="Script name" value={name} required maxLength={120} disabled={busy} readOnly={!!current} onChange={event => { setName(event.target.value); edit(); }} />
-        <p className={styles.planned} role="status">{current?.approved && !dirty ? 'Approved · bound to hash' : dirty ? 'Unsaved changes' : 'Unapproved'}</p>
+        <p className={styles.status} role="status" data-approved={current?.approved && !dirty}>{dirty ? 'Unsaved changes' : current?.approved ? 'Approved' : saved ? 'Version saved · Check before approval' : current ? 'Unapproved' : 'New script'}</p>
+        <div className={styles.actions}>
+          <Button className={styles.compactButton} type="submit" busy={busy} disabled={!dirty || !name.trim() || !source.trim() || sourceBytes > 65536}>Save {current ? 'new version' : 'scenario'}</Button>
+          <Button className={styles.compactButton} variant="secondary" disabled={busy || dirty || !current} onClick={() => void checkScript()}>Check saved script</Button>
+        </div>
         {sourceBytes > 65536 && <Notice title="Script too large" tone="error">Reduce the source to 65,536 UTF-8 bytes before saving.</Notice>}
-      </div>
-      <div className={styles.actions}><Button type="submit" busy={busy} disabled={!dirty || !name.trim() || !source.trim() || sourceBytes > 65536}>Save {current ? 'new version' : 'scenario'}</Button>
-      <Button variant="secondary" disabled={busy || dirty || !current} onClick={() => void checkScript()}>Check saved script</Button>
-      <Button disabled={busy || dirty || !review?.syntaxValid || !review?.policyAccepted || !acknowledged || current?.approved} onClick={() => void approve()}><Icon name="lock" width={13} height={13} />Approve version</Button></div>
-      <div ref={setEditorTools} />
-      {error && <Notice title="Scenario action failed" tone="error">{error}</Notice>}
-      {review && <section aria-label="Script check results">
-        <Notice title={review.syntaxValid && review.policyAccepted ? 'Static checks passed' : 'Script checks need attention'} tone={review.syntaxValid && review.policyAccepted ? 'info' : 'error'}>
-          Version {review.version} · {review.policyVersion} · parser {review.parserVersion}. These parse-only checks do not execute the script or confirm k6 runtime compatibility, destination safety or approval.
-        </Notice>
-        {review.findings.length > 0 && <ul>{review.findings.map((finding, index) => <li key={index}>Line {finding.line}, column {finding.column}: {finding.message}</li>)}</ul>}
-        {review.syntaxValid && review.policyAccepted && !current?.approved && <label><input type="checkbox" checked={acknowledged} disabled={busy || dirty} onChange={event => setAcknowledged(event.target.checked)} /> I reviewed the exact source and SHA-256 of saved version {review.version}. Approval does not start a test.</label>}
-      </section>}
-      {saved && <Notice title="Version saved">Check the saved script before approving this version.</Notice>}
-      {current && <section className={styles.version} aria-label="Saved version details"><h3>Saved version {current.version}</h3>
-        <p>{current.approved ? 'Approved saved version · Runtime checks still required' : 'Unapproved'}</p>
-        <p>SHA-256: <code>{current.sha256}</code></p>
-        <div className={styles.actions}><Button disabled={busy || current.version <= 1} variant="secondary" onClick={() => void open(current.scenarioId, current.version - 1)}>Older version</Button>
-        <Button disabled={busy || current.version >= (latest ?? current.version)} variant="secondary" onClick={() => void open(current.scenarioId, current.version + 1)}>Newer version</Button>
-        <Button disabled={busy} variant="secondary" onClick={() => void open(current.scenarioId)}>Reload latest</Button></div>
-      </section>}
-    </section>
-    <section className={styles.editorPane} aria-labelledby="script-source-title">
-      <div className={styles.panelTitle}><h2 id="script-source-title">Script source</h2><span>{sourceBytes.toLocaleString()} / 65,536 UTF-8 bytes</span></div>
-      <CodeEditor value={source} disabled={busy} toolsHost={editorTools} onChange={value => { setSource(value); edit(); }} />
-    </section>
+        {error && <Notice title="Script action failed" tone="error">{error}</Notice>}
+        {review && <section className={styles.review} aria-label="Script check results">
+          <Notice title={review.syntaxValid && review.policyAccepted ? 'Static checks passed' : 'Script checks need attention'} tone={review.syntaxValid && review.policyAccepted ? 'info' : 'error'}>
+            {review.syntaxValid && review.policyAccepted ? 'k6 runtime checks are still required.' : 'Review the findings and save a corrected version.'}
+          </Notice>
+          {review.findings.length > 0 && <ul>{review.findings.map((finding, index) => <li key={index}>Line {finding.line}, column {finding.column}: {finding.message}</li>)}</ul>}
+          {review.syntaxValid && review.policyAccepted && !current?.approved && <>
+            <label className={styles.acknowledgment}><input type="checkbox" checked={acknowledged} disabled={busy || dirty} onChange={event => setAcknowledged(event.target.checked)} /> I reviewed the exact source of saved version {review.version}.</label>
+            <Button className={styles.compactButton} disabled={busy || dirty || !acknowledged} onClick={() => void approve()}><Icon name="lock" width={13} height={13} />Approve version</Button>
+          </>}
+        </section>}
+        {current && <details className={styles.version}>
+          <summary>Version details</summary>
+          <dl>
+            <dt>SHA-256</dt><dd><code>{current.sha256}</code></dd>
+            {review && <><dt>Static check versions</dt><dd>{review.policyVersion} · {review.parserVersion}</dd></>}
+          </dl>
+          {current.approved && <p className={styles.status}>k6 runtime checks are still required.</p>}
+          <div className={styles.actions}>
+            <Button className={styles.compactButton} disabled={busy || current.version <= 1} variant="secondary" onClick={() => void open(current.scenarioId, current.version - 1)}>Older version</Button>
+            <Button className={styles.compactButton} disabled={busy || current.version >= (latest ?? current.version)} variant="secondary" onClick={() => void open(current.scenarioId, current.version + 1)}>Newer version</Button>
+            <Button className={styles.compactButton} disabled={busy} variant="secondary" onClick={() => void open(current.scenarioId)}>Reload latest</Button>
+          </div>
+        </details>}
+      </section>
+      <CodeEditor value={source} disabled={busy} sourceSize={`${sourceBytes.toLocaleString()} / 65,536 UTF-8 bytes`} onChange={value => { setSource(value); edit(); }} />
     </form>
   </>;
 }

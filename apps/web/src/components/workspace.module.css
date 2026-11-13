@@ -15,6 +15,12 @@
 .accountArea { margin-left: auto; display: flex; align-items: center; --ink: var(--guide-ink); --muted: var(--guide-ink); --line: var(--guide-blue); --line-strong: var(--guide-ink); --primary-soft: var(--guide-peach); --primary-hover: var(--guide-ink); --danger: var(--guide-ink); }
 .content { width: 100%; padding: var(--workspace-padding, 32px) clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .content:focus { outline: none; }
+@media (min-width: 901px) and (min-height: 600px) {
+  .workspace:has(.content > [data-script-editor]) { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; }
+  .workspace:has(.content > [data-script-editor]) .body { min-height: 0; }
+  .content:has(> [data-script-editor]) { display: flex; flex-direction: column; min-height: 0; padding-bottom: 24px; }
+  .content:has(> [data-script-editor]) > header { flex-shrink: 0; }
+}
 .empty { display: flex; flex-direction: column; align-items: flex-start; padding: 28px 24px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .empty h2 { margin: 0 0 8px; }
 .missingPage h1 { color: var(--danger); }
