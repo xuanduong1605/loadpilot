@@ -1,10 +1,11 @@
-.workspace { min-height: 100dvh; background: var(--guide-canvas); }
-.topbar { min-height: 64px; padding: 8px 28px 8px 14px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); background: var(--guide-canvas); }
+.workspace { --sidebar-inset: 9px; min-height: 100dvh; background: var(--guide-canvas); }
+.topbar { min-height: 64px; padding: 8px 28px 8px calc(var(--sidebar-inset) + 7px); display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); background: var(--guide-canvas); }
 .toggle { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--ink); cursor: pointer; }
 .toggle:hover { background: var(--primary-soft); }
 .body { display: grid; grid-template-columns: var(--sidebar-width, 220px) minmax(0, 1fr); min-height: calc(100dvh - 64px); }
 .sidebar { border-inline-end: 1px solid var(--line); background: var(--surface); }
-.sidebar nav { position: sticky; top: 0; display: grid; align-content: start; gap: 4px; padding: 18px 9px; }
+.sidebarControls { position: sticky; top: 0; display: grid; gap: 8px; padding: 10px var(--sidebar-inset); }
+.sidebar nav { display: grid; gap: 4px; }
 .sidebar a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: var(--radius-md); text-decoration: none; white-space: nowrap; }
 .sidebar svg { flex-shrink: 0; }
 .sidebar a:hover { background: var(--surface-hover); }
@@ -27,9 +28,9 @@
   .workspace[data-navigation='auto'] .sidebar a span { display: none; }
 }
 @media (max-width: 700px) {
+  .workspace { --sidebar-inset: 5px; }
   .body { position: relative; grid-template-columns: 56px minmax(0, 1fr); }
-  .topbar { padding-inline: 6px 16px; }
-  .sidebar nav { padding-inline: 5px; }
+  .topbar { padding-inline-end: 16px; }
   .workspace[data-navigation='expanded'] .sidebar { position: absolute; inset: 0 auto 0 0; width: min(220px, 76vw); z-index: 2; box-shadow: 8px 0 24px rgb(0 55 89 / 12%); }
   .content { grid-column: 2; padding-block: var(--workspace-padding-small, 24px) 48px; }
 }

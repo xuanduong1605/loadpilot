@@ -29,9 +29,6 @@ export function WorkspaceShell({ children, account }: { children: React.ReactNod
   return <div className={`${styles.workspace} ${guide.theme}`} data-navigation={preference === undefined ? 'auto' : expanded ? 'expanded' : 'collapsed'}>
     <a className="skip-link" href="#main-content">Skip to content</a>
     <header className={styles.topbar}>
-      <button ref={toggle} type="button" className={styles.toggle} aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'} aria-expanded={expanded} aria-controls="workspace-navigation" onClick={() => setPreference(!expanded)}>
-        <Icon name="panel" />
-      </button>
       <BrandLink />
       <div className={styles.accountArea}>{account}</div>
     </header>
@@ -39,16 +36,19 @@ export function WorkspaceShell({ children, account }: { children: React.ReactNod
       <aside className={styles.sidebar} onKeyDown={event => {
         if (event.key === 'Escape' && expanded) { setPreference(false); toggle.current?.focus(); }
       }}>
-        <nav id="workspace-navigation" aria-label="Workspace">
-          {destinations.map(({ href, label, icon }) => {
-            const active = href === '/' ? pathname === '/' : pathname.startsWith(href) || (href === '/experiments/' && pathname.startsWith('/comparisons/'));
-            return <Link key={href} href={href} aria-label={label} title={label} aria-current={active ? 'page' : undefined} onClick={() => {
-              if (window.matchMedia('(max-width: 700px)').matches) setPreference(false);
-            }}>
-              <Icon name={icon} /><span>{label}</span>
-            </Link>;
-          })}
-        </nav>
+        <div className={styles.sidebarControls}>
+          <button ref={toggle} type="button" className={styles.toggle} aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'} aria-expanded={expanded} aria-controls="workspace-navigation" onClick={() => setPreference(!expanded)}>
+            <Icon name="panel" />
+          </button>
+          <nav id="workspace-navigation" aria-label="Workspace">
+            {destinations.map(({ href, label, icon }) => {
+              const active = href === '/' ? pathname === '/' : pathname.startsWith(href) || (href === '/experiments/' && pathname.startsWith('/comparisons/'));
+              return <Link key={href} href={href} aria-label={label} title={label} aria-current={active ? 'page' : undefined} onNavigate={() => setPreference(false)}>
+                <Icon name={icon} /><span>{label}</span>
+              </Link>;
+            })}
+          </nav>
+        </div>
       </aside>
       <main id="main-content" className={styles.content} tabIndex={-1}>{children}</main>
     </div>
