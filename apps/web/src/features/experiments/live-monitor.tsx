@@ -88,7 +88,6 @@ export function LiveMonitor() {
       {run && <div className={styles.actions} role="group" aria-label="Run sections">{(['metrics', 'evidence', 'stop'] as const).map(value => <Button key={value} variant="secondary" aria-pressed={panel === value} onClick={() => setPanel(value)}>{value === 'metrics' ? 'Metrics' : value === 'evidence' ? 'Evidence' : 'Stop run'}</Button>)}</div>}
       <div className={styles.actions}>
         <span role="status"><StatusBadge tone={run?.status === 'RUNNING' ? 'info' : run && ['FAILED', 'RECOVERY_REQUIRED'].includes(run.status) ? 'danger' : 'neutral'}>{run?.status ?? 'Awaiting run status'}</StatusBadge></span>
-        <Link className={styles.secondary} href="/experiments/monitor/">Choose another run</Link>
         <Button variant="secondary" disabled={loading} onClick={() => setRetry(value => value + 1)}><Icon name="refresh" width={13} height={13} />Reload</Button>
       </div>
     </div>

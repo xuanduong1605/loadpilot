@@ -1,16 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { ApiError, api, mutate } from '../../lib/api';
 import { Button, Notice } from '../../components/form-controls';
+import { PageHeading, RecordMetadata, StatusBadge } from '../../components/console-ui';
+import guide from '../../components/task-guide.module.css';
 import type { Target } from '../targets/types';
 import styles from './settings.module.css';
 import type { LoadProfile } from './load-profile';
 import type { SloPolicy } from './slo-policy';
 import { LoadSummary, SloSummary, SummaryRows } from './experiment-summary';
 import summary from './experiment-summary.module.css';
+import { ExperimentNavigation } from './experiment-navigation';
 
-export type Draft = { id: string; targetId: string; settings: Record<string, number>; revision: number; scenarioId: string | null; scenarioVersion: number | null; executionBounds: Record<string, number | null> | null; loadProfile: LoadProfile | null; sloPolicy: SloPolicy | null };
+export type Draft = { id: string; targetId: string; settings: Record<string, number>; revision: number; updatedAt?: string; scenarioId: string | null; scenarioVersion: number | null; executionBounds: Record<string, number | null> | null; loadProfile: LoadProfile | null; sloPolicy: SloPolicy | null };
 type Inputs = {
   schemaVersion: string; draftId: string; draftRevision: number; mode: string;
   target: Pick<Target, 'id' | 'name' | 'baseUrl' | 'environment' | 'namespace' | 'deployment' | 'container' | 'revision'>;
@@ -142,12 +146,19 @@ export function SavedExperimentInputs({ id }: { id: string }) {
       .catch(reason => { if (active) setError(reason.message); });
     return () => { active = false; };
   }, [id, retry]);
-  return <section className={`${styles.form} ${styles.reviewForm} ${summary.stack}`} aria-labelledby="finalized-inputs-title">
-    <div className={summary.sectionHead}><div><h2 id="finalized-inputs-title">Finalized experiment inputs</h2>
-      {snapshot && <p>{snapshot.inputs.target.name} · Finalized by {snapshot.createdBy} · {new Date(snapshot.createdAt).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</p>}
-    </div>{snapshot && <div className={summary.actions}><a href={`/experiments/new/?draft=${encodeURIComponent(snapshot.inputs.draftId)}`}>Open editable draft</a><a href="/experiments/new/">New draft</a></div>}</div>
-    {!snapshot && !error && <p role="status">Loading input snapshot…</p>}
-    {error && <><Notice title="Cannot load snapshot" tone="error">{error}</Notice><Button onClick={() => setRetry(value => value + 1)}>Try again</Button></>}
-    {snapshot && <InputDetails {...snapshot} />}
-  </section>;
+  return <>
+    <PageHeading title="Input review" back={{ href: '/experiments/review/', label: 'Choose saved inputs' }} actions={snapshot && <>
+      <RecordMetadata name={snapshot.inputs.target.name}>
+        Finalized by {snapshot.createdBy} · <time dateTime={snapshot.createdAt}>{new Date(snapshot.createdAt).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</time> · Draft revision {snapshot.inputs.draftRevision}
+      </RecordMetadata>
+      <Link className={guide.secondary} href={`/experiments/new/?draft=${encodeURIComponent(snapshot.inputs.draftId)}`}>Edit draft</Link>
+    </>} />
+    <ExperimentNavigation screen="review" />
+    <section className={summary.stack} aria-labelledby="finalized-inputs-title">
+      <div className={summary.sectionHead}><h2 id="finalized-inputs-title">Finalized experiment inputs</h2>{snapshot && <StatusBadge tone="success">Finalized</StatusBadge>}</div>
+      {!snapshot && !error && <p role="status">Loading input snapshot…</p>}
+      {error && <><Notice title="Cannot load snapshot" tone="error">{error}</Notice><div><Button onClick={() => setRetry(value => value + 1)}>Try again</Button></div></>}
+      {snapshot && <InputDetails {...snapshot} />}
+    </section>
+  </>;
 }

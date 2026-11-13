@@ -6,6 +6,7 @@ const paths = {
   stop: 'M5 5h14v14H5Z',
   clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4v5l3 2',
   arrow: 'M5 12h14m-6-6 6 6-6 6',
+  arrowLeft: 'M19 12H5m6-6-6 6 6 6',
   chevron: 'm9 5 7 7-7 7',
   panel: 'M3 3h18v18H3Zm6 0v18',
   plus: 'M12 5v14M5 12h14',

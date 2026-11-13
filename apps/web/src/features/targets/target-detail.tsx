@@ -3,6 +3,7 @@
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Notice } from '../../components/form-controls';
+import { PageHeading, RecordMetadata, StatusBadge } from '../../components/console-ui';
 import { api, mutate } from '../../lib/api';
 import { FeatureNav } from '../../components/feature-nav';
 import { TargetForm } from './target-form';
@@ -50,10 +51,13 @@ export function TargetDetail() {
     invalidate(value.id); setTarget(value); setEditing(false);
     if (create) router.replace(`/targets/detail/?id=${value.id}${check ? '&check=1' : ''}`);
   }
+  const record = !create && target?.id === id ? target : undefined;
   return <>
-    <div className={create ? styles.heading : detail.heading}><div><h1>{create ? 'Register system' : target?.id === id ? target.name : 'System details'}</h1>
-      {!create && target?.id === id && <div className={detail.subtitle}><span className={detail.environment}>{target.environment.toLowerCase()}</span>{target.archivedAt && <span>Archived</span>}</div>}</div>
-    </div>
+    <PageHeading title={create ? 'Register system' : 'System'} back={{ href: '/targets/', label: 'Back to systems' }} actions={record && <>
+      <RecordMetadata name={record.name}>Revision {record.revision}{record.updatedAt && <> · Updated <time dateTime={record.updatedAt}>{new Date(record.updatedAt).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</time></>}</RecordMetadata>
+      <span className={detail.environment}>{record.environment.toLowerCase()}</span>
+      {record.archivedAt && <StatusBadge>Archived</StatusBadge>}
+    </>} />
     {error && <><Notice title="Cannot complete this action" tone="error">{error}</Notice><div className={styles.actions}><Button onClick={() => void load()}>Reload system</Button></div></>}
     {loading && <p role="status">Loading system…</p>}
     {!create && !valid && <Notice title="Choose a system">Open a system from the systems list to view its details.</Notice>}

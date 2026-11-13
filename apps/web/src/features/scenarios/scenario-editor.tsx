@@ -6,6 +6,7 @@ import { api, mutate } from '../../lib/api';
 import styles from './scenarios.module.css';
 import CodeEditor from './code-editor';
 import { Icon } from '../../components/icon';
+import { PageHeading, RecordMetadata } from '../../components/console-ui';
 
 type Version = { scenarioId: string; name: string; version: number; source: string; sha256: string; createdBy: string; createdAt: string; approved: boolean };
 type ScriptReview = { id: string; version: number; sha256: string; syntaxValid: boolean; policyAccepted: boolean; policyVersion: string; parserVersion: string; runtimeCheckRequired: boolean; findings: { code: string; message: string; line: number; column: number }[] };
@@ -83,7 +84,11 @@ export function ScenarioEditor() {
     finally { setBusy(false); }
   }
   function edit() { setDirty(true); setSaved(false); setReview(undefined); setAcknowledged(false); }
-  return <form className={styles.layout} onSubmit={save} aria-busy={busy}>
+  return <>
+    <PageHeading title="Script editor" back={{ href: '/scenarios/', label: 'Back to scripts' }} actions={current && <RecordMetadata name={current.name}>
+      Version {current.version} · Saved by {current.createdBy} · <time dateTime={current.createdAt}>{new Date(current.createdAt).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</time>
+    </RecordMetadata>} />
+    <form className={styles.layout} onSubmit={save} aria-busy={busy}>
     <section className={styles.panel} aria-labelledby="script-settings-title">
       <h2 id="script-settings-title">Script settings</h2>
       <div className={styles.fields}>
@@ -105,7 +110,7 @@ export function ScenarioEditor() {
       </section>}
       {saved && <Notice title="Version saved">Check the saved script before approving this version.</Notice>}
       {current && <section className={styles.version} aria-label="Saved version details"><h3>Saved version {current.version}</h3>
-        <p>{current.approved ? 'Approved saved version — runtime checks still required' : 'Unapproved'} · saved by {current.createdBy} · {new Date(current.createdAt).toLocaleString('en-GB', { timeZone: 'UTC' })}</p>
+        <p>{current.approved ? 'Approved saved version · Runtime checks still required' : 'Unapproved'}</p>
         <p>SHA-256: <code>{current.sha256}</code></p>
         <div className={styles.actions}><Button disabled={busy || current.version <= 1} variant="secondary" onClick={() => void open(current.scenarioId, current.version - 1)}>Older version</Button>
         <Button disabled={busy || current.version >= (latest ?? current.version)} variant="secondary" onClick={() => void open(current.scenarioId, current.version + 1)}>Newer version</Button>
@@ -116,5 +121,6 @@ export function ScenarioEditor() {
       <div className={styles.panelTitle}><h2 id="script-source-title">Script source</h2><span>{sourceBytes.toLocaleString()} / 65,536 UTF-8 bytes</span></div>
       <CodeEditor value={source} disabled={busy} toolsHost={editorTools} onChange={value => { setSource(value); edit(); }} />
     </section>
-  </form>;
+    </form>
+  </>;
 }

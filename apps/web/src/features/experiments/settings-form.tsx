@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button, Notice, TextField } from '../../components/form-controls';
+import { PageHeading, RecordMetadata, StatusBadge } from '../../components/console-ui';
+import { ExperimentNavigation } from './experiment-navigation';
 import { api, mutate } from '../../lib/api';
 import type { Target, TargetPage } from '../targets/types';
 import styles from './settings.module.css';
@@ -167,7 +169,13 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Cannot validate settings.'); }
     finally { setBusy(false); }
   }
-  return <><nav className={styles.steps} aria-label="Setup steps">{stepNames.map((name, index) => <button key={name} type="button" aria-current={step === index ? 'step' : undefined} onClick={() => goToStep(index)}>{index + 1}. {name}</button>)}</nav><form noValidate className={step === 4 ? `${styles.form} ${styles.reviewForm}` : styles.form} onSubmit={event => { if (step !== 4) { event.preventDefault(); goToStep(step + 1); } else void submit(event); }} onChange={() => { setReview(undefined); setError(''); setSaved(false); setDirty(true); }}>
+  return <>
+    <PageHeading title={draft ? 'Edit experiment draft' : 'New experiment'} back={{ href: '/experiments/', label: 'Back to experiments' }} actions={draft && <>
+      <RecordMetadata name={targetName}>Revision {draft.revision}{draft.updatedAt && <> · Updated <time dateTime={draft.updatedAt}>{new Date(draft.updatedAt).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</time></>}</RecordMetadata>
+      <StatusBadge tone="warning">Draft</StatusBadge>
+    </>} />
+    <ExperimentNavigation screen="setup" />
+    <nav className={styles.steps} aria-label="Setup steps">{stepNames.map((name, index) => <button key={name} type="button" aria-current={step === index ? 'step' : undefined} onClick={() => goToStep(index)}>{index + 1}. {name}</button>)}</nav><form noValidate className={step === 4 ? `${styles.form} ${styles.reviewForm}` : styles.form} onSubmit={event => { if (step !== 4) { event.preventDefault(); goToStep(step + 1); } else void submit(event); }} onChange={() => { setReview(undefined); setError(''); setSaved(false); setDirty(true); }}>
     <h2 ref={stepHeading} tabIndex={-1} className={styles.stepHeading}>{stepNames[step]}</h2>
     <div data-setup-step={0} hidden={step !== 0}>    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
       <legend>Choose a target and approved script</legend>
@@ -269,7 +277,7 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
     </div>}
     {error && <Notice title="Validation unavailable" tone="error">{error}</Notice>}
     {saved && <Notice title="Draft saved">Bookmark this page to reopen the saved settings. Saving does not approve or start a load test.</Notice>}
-    {draft && <p>Draft revision {draft.revision}. <a href={`/experiments/new/?draft=${encodeURIComponent(draft.id)}`}>Reload saved draft</a></p>}
+    {draft && <p><a href={`/experiments/new/?draft=${encodeURIComponent(draft.id)}`}>Reload saved draft</a></p>}
     {review && (review.valid ? <Notice title="Settings validated">Each attempt has a {review.maximumAttemptSeconds} s ceiling. The budget reserves {review.reservedAttemptsPerLoad} attempts per tested load. Validation does not save or approve inputs.</Notice>
       : <Notice title="Review settings" tone="error">{review.errors.join(' ')}</Notice>)}
     <div className={styles.stepActions}><Button variant="secondary" disabled={step === 0 || busy || reviewBusy} onClick={() => goToStep(step - 1)}>Back</Button><span>Step {step + 1} of {stepNames.length}</span>{step < 4 && <Button disabled={busy || reviewBusy} onClick={() => goToStep(step + 1)}>Continue</Button>}</div>

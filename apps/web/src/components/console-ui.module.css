@@ -1,6 +1,13 @@
-.heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 24px; margin-bottom: 24px; }
+.headingTitle { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; }
 .heading h1 { margin: 0 0 6px; }
+.heading h1:last-child { margin-bottom: 0; }
 .heading p { color: var(--muted); font-size: 12px; margin: 0; max-width: 75ch; }
+.backLink { flex: 0 0 44px; min-height: 44px; display: grid; place-items: center; border-radius: var(--radius-md); color: var(--ink); }
+.backLink:hover { background: var(--primary-soft); }
+.headingActions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 10px 16px; min-width: 0; max-width: 100%; margin-inline-start: auto; }
+.recordMetadata { display: grid; justify-items: end; min-width: 0; gap: 3px; text-align: end; overflow-wrap: anywhere; }
+.recordMetadata strong { font-size: 14px; font-weight: 600; }
 .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .monitorToolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 20px; margin-bottom: 20px; }
 .action, .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 7px 12px; background: var(--action); border: 1px solid var(--action); border-radius: 6px; color: #fff; text-decoration: none; font-size: 12px; font-weight: 500; white-space: nowrap; }

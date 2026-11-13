@@ -14,6 +14,9 @@ type Page = { items: Entry[]; hasMore: boolean };
 const dates = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' });
 const route = { DRAFTS: '/experiments/new/?draft=', SNAPSHOTS: '/experiments/review/?snapshot=', RUNS: '/experiments/monitor/?run=' };
 const empty = { DRAFTS: 'Saved drafts appear here after you save an experiment setup.', SNAPSHOTS: 'Finalized inputs appear here after you review and save them.', RUNS: 'Runs appear here after they are created.' };
+const statusTones: Partial<Record<string, 'warning' | 'success' | 'danger'>> = {
+  DRAFT: 'warning', FINALIZED: 'success', COMPLETED: 'success', FAILED: 'danger', RECOVERY_REQUIRED: 'danger',
+};
 
 export function recordLabel(entry: Entry) {
   return entry.scriptName ? `${entry.scriptName}${entry.scriptVersion === null ? '' : ` · v${entry.scriptVersion}`}` : 'Script not selected';
@@ -56,7 +59,7 @@ export function ExperimentRecords({ kind, title, preview = false }: { kind: Kind
     {records.items.length > 0 && <ul className={styles.records}>{records.items.map(entry => <li key={entry.id}>
       <Link href={route[kind] + encodeURIComponent(entry.id)} className={styles.record}>
         <span className={styles.identity}><strong>{entry.targetName ?? 'Unnamed system'}</strong><span>{recordLabel(entry)}</span></span>
-        <span className={styles.meta}><StatusBadge tone={entry.status === 'COMPLETED' ? 'success' : ['FAILED', 'RECOVERY_REQUIRED'].includes(entry.status) ? 'danger' : 'neutral'}>{entry.status.toLowerCase().replaceAll('_', ' ')}</StatusBadge>
+        <span className={styles.meta}><StatusBadge tone={statusTones[entry.status]}>{entry.status.toLowerCase().replaceAll('_', ' ')}</StatusBadge>
           <time dateTime={entry.listedAt}>{dates.format(new Date(entry.listedAt))}</time></span>
       </Link>
     </li>)}</ul>}
