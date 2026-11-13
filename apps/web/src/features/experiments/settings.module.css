@@ -1,4 +1,5 @@
 .form { min-width: 0; max-width: none; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.form.reviewForm { border: 0; padding: 0; }
 .form p { font-size: 13px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
 .fields { border: 0; border-top: 1px solid var(--line); padding: 20px 0 0; margin: 28px 0; min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .fields legend { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
@@ -16,16 +17,12 @@
 @media (max-width: 600px) { .boundFields { grid-template-columns: minmax(0, 1fr); } }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0; }
 .form + .form { margin-top: 24px; }
-.details { display: grid; grid-template-columns: minmax(100px, 160px) minmax(0, 1fr); gap: 12px 16px; font-size: 13px; line-height: 1.7; margin: 24px 0; }
-.details dt { color: var(--muted); }
-.details dd { margin: 0; overflow-wrap: anywhere; }
 .source { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; border: 1px solid var(--line); background: var(--canvas); font-size: 12px; }
 .form label { overflow-wrap: anywhere; }
 .workbench { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 20px; align-items: start; }
 .workbench > div { min-width: 0; }
 @media(max-width: 1150px) { .workbench { grid-template-columns: minmax(0, 1fr); } .workbench > aside { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; } }
 @media(max-width: 650px) { .workbench > aside { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 480px) { .details { grid-template-columns: minmax(0, 1fr); gap: 4px; } .details dd { margin-bottom: 12px; } }
 @media (max-width: 480px) { .form { padding: 16px; } }
 
 .steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; }
@@ -36,4 +33,3 @@
 .stepHeading:focus { outline: none; }
 .stepActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); padding-top: 24px; margin-top: 28px; }
 .stepActions span { font-size: 13px; }
-.reviewRow { display: contents; }

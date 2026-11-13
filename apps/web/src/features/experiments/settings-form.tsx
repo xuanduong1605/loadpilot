@@ -8,13 +8,15 @@ import styles from './settings.module.css';
 import { ExperimentReview, type Draft } from './experiment-review';
 import { LoadProfileEditor, encodeProfile, profileValues } from './load-profile';
 import { SloPolicyEditor, encodeSlo, sloValues } from './slo-policy';
+import { LoadSummary, SloSummary, SummaryRows } from './experiment-summary';
+import summary from './experiment-summary.module.css';
 
 const fields = [
   ['minimumRate', 'Minimum load (iterations/s)', 1, 10000, 1],
   ['maximumRate', 'Maximum load (iterations/s)', 1, 10000, 1],
   ['durationSeconds', 'Run duration including warm-up (seconds)', 1, 3600, 1],
   ['warmupSeconds', 'Warm-up excluded from measurement (seconds)', 0, 3599, 1],
-  ['p95LatencyMs', 'Maximum p95 latency (milliseconds)', 1, 600000, 1],
+  ['p95LatencyMs', 'Maximum latency (milliseconds)', 1, 600000, 1],
   ['maximumErrorRatio', 'Maximum error ratio (0–1)', 0, 1, 0.001],
   ['repetitions', 'Repetitions per tested load', 1, 20, 1],
   ['maximumRuns', 'Maximum total attempts (including retries)', 1, 100, 1],
@@ -75,6 +77,14 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
   const latest = latestScript?.scenarioId === scenarioId ? latestScript : undefined;
   const scriptName = listedScript?.name ?? latest?.name ?? (script?.scenarioId === scenarioId ? script.name : undefined);
   const newestVersion = Math.max(listedScript?.latestVersion ?? latest?.version ?? 0, Number(scenarioVersion));
+  const duration = values.durationSeconds ? Number(values.durationSeconds) : undefined;
+  const warmup = values.warmupSeconds ? Number(values.warmupSeconds) : undefined;
+  const measurement = profile.measurementSeconds ? Number(profile.measurementSeconds) : undefined;
+  const canPlot = step === 4 && profile.mode === 'SINGLE_RUN' && !!profile.shape && profile.startRate !== '' && duration !== undefined && warmup !== undefined && measurement !== undefined
+    && duration > 0 && warmup >= 0 && measurement > 0 && warmup + measurement <= duration
+    && (profile.shape === 'STEADY' || (profile.stages.length > 0 && profile.stages.every(stage => Number(stage.durationSeconds) > 0 && stage.targetRate !== '')
+      && profile.stages.reduce((total, stage) => total + Number(stage.durationSeconds), 0) === duration));
+  const reviewedPolicy = step === 4 ? encodeSlo(slo, { p95LatencyMs: Number(values.p95LatencyMs), maximumErrorRatio: Number(values.maximumErrorRatio) }) : null;
   const versions = Array.from({ length: Math.min(versionLimit, newestVersion) }, (_, index) => newestVersion - index);
   useEffect(() => {
     let active = true; setScenarios(undefined); setScenarioError('');
@@ -157,7 +167,7 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Cannot validate settings.'); }
     finally { setBusy(false); }
   }
-  return <><nav className={styles.steps} aria-label="Setup steps">{stepNames.map((name, index) => <button key={name} type="button" aria-current={step === index ? 'step' : undefined} onClick={() => goToStep(index)}>{index + 1}. {name}</button>)}</nav><form noValidate className={styles.form} onSubmit={event => { if (step !== 4) { event.preventDefault(); goToStep(step + 1); } else void submit(event); }} onChange={() => { setReview(undefined); setError(''); setSaved(false); setDirty(true); }}>
+  return <><nav className={styles.steps} aria-label="Setup steps">{stepNames.map((name, index) => <button key={name} type="button" aria-current={step === index ? 'step' : undefined} onClick={() => goToStep(index)}>{index + 1}. {name}</button>)}</nav><form noValidate className={step === 4 ? `${styles.form} ${styles.reviewForm}` : styles.form} onSubmit={event => { if (step !== 4) { event.preventDefault(); goToStep(step + 1); } else void submit(event); }} onChange={() => { setReview(undefined); setError(''); setSaved(false); setDirty(true); }}>
     <h2 ref={stepHeading} tabIndex={-1} className={styles.stepHeading}>{stepNames[step]}</h2>
     <div data-setup-step={0} hidden={step !== 0}>    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
       <legend>Choose a target and approved script</legend>
@@ -222,12 +232,41 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
       {draft && !draft.executionBounds && <Notice title="Execution limits needed">This older draft has no recorded execution limits. Complete these fields and save a new revision before reviewing it.</Notice>}
     </fieldset>
     </div>
-    <div hidden={step !== 4}><h3>Review your configuration</h3><dl className={styles.details}><dt>Target</dt><dd>{targetName ?? (targetId ? 'Selected system' : 'Not selected')}</dd><dt>Script</dt><dd>{scriptName && scenarioVersion ? `${scriptName} · version ${scenarioVersion}` : 'Not selected'}</dd>{fields.map(([key, label]) => <div key={key} className={styles.reviewRow}><dt>{label}</dt><dd>{values[key] || 'Not entered'}</dd></div>)}{executionFields.map(([key, label]) => <div key={key} className={styles.reviewRow}><dt>{label}</dt><dd>{executionValues[key] || (key === 'precisionIterationsPerSecond' && profile.mode === 'SINGLE_RUN' ? 'Not applicable' : 'Not entered')}</dd></div>)}</dl>
-    <div className={styles.actions}><Button type="submit" busy={busy} disabled={reviewBusy}>Validate settings</Button>
-    <Button type="submit" name="action" value="save" disabled={busy || reviewBusy || !targetId}>Save draft</Button>
-    <Button disabled title="Runtime checks and execution are not implemented">Start experiment</Button>
-    </div>
-    </div>
+    {reviewedPolicy && <div className={summary.stack}>
+      <SloSummary percentile={slo.latencyPercentile} latency={values.p95LatencyMs} errorRatio={values.maximumErrorRatio}
+        throughputKind={reviewedPolicy.throughputKind} throughput={slo.minimumThroughputRps}
+        throughputEmpty={slo.throughputChoice === 'NONE' ? 'Not configured' : slo.throughputChoice ? 'Not entered' : 'Not selected'}
+        resources={reviewedPolicy.resourceConditions} resourceEmpty={slo.resourceChoice === 'NONE' ? 'Not configured' : slo.resourceChoice ? 'Not entered' : 'Not selected'}
+        httpDefinition edit={<Button variant="secondary" disabled={busy || reviewBusy} onClick={() => goToStep(1)}>Edit SLO policy</Button>} />
+      <LoadSummary profile={canPlot ? encodeProfile(profile, duration) : null} duration={duration} warmup={warmup}
+        edit={<Button variant="secondary" disabled={busy || reviewBusy} onClick={() => goToStep(2)}>Edit load &amp; budgets</Button>} rows={[
+          ['Test mode', profile.mode === 'SINGLE_RUN' ? 'Single-run profile' : profile.mode === 'ADAPTIVE_LOAD' ? 'Adaptive steady-load trials' : 'Not selected'],
+          ['Load shape', profile.shape ? profile.shape.toLowerCase() : 'Not selected'],
+          ['Starting rate', profile.mode === 'ADAPTIVE_LOAD' ? 'Selected per trial' : profile.startRate ? `${profile.startRate} iterations/s` : 'Not entered'],
+          ['Load bounds', values.minimumRate && values.maximumRate ? `${values.minimumRate}–${values.maximumRate} iterations/s` : 'Not entered'],
+          ['Duration / warm-up', duration !== undefined && warmup !== undefined ? `${duration} s total / ${warmup} s excluded` : 'Not entered'],
+          ['Measurement window', measurement !== undefined && warmup !== undefined ? `${warmup}–${warmup + measurement} s (${measurement} s)` : 'Not entered'],
+        ]} />
+      <section className={summary.section} aria-label="System and script">
+        <div className={summary.sectionHead}><h3>System and script</h3><Button variant="secondary" disabled={busy || reviewBusy} onClick={() => goToStep(0)}>Edit target &amp; script</Button></div>
+        <SummaryRows rows={[
+          ['System', targetName ?? (targetId ? 'Selected system' : 'Not selected')],
+          ['Script', scriptName && scenarioVersion ? `${scriptName} · version ${scenarioVersion}` : 'Not selected'],
+          ['Script approval', script ? script.approved ? 'Approved' : 'Unapproved' : 'Unavailable'],
+        ]} />
+      </section>
+      <details className={summary.more}><summary>Execution limits and budgets</summary>
+        <SummaryRows rows={[
+          ...fields.filter(([key]) => ['repetitions', 'maximumRuns', 'totalBudgetSeconds'].includes(key)).map(([key, label]): [string, string | undefined] => [label, values[key] || undefined]),
+          ...executionFields.filter(([key]) => key !== 'precisionIterationsPerSecond' || profile.mode !== 'SINGLE_RUN').map(([key, label]): [string, string | undefined] => [label, executionValues[key] || undefined]),
+        ]} />
+        <div className={styles.actions}><Button variant="secondary" disabled={busy || reviewBusy} onClick={() => goToStep(3)}>Edit execution limits</Button></div>
+      </details>
+      <div className={summary.actions}>
+        <Button type="submit" name="action" value="save" busy={busy} disabled={reviewBusy || !targetId}>Save draft</Button>
+        <Button type="submit" variant="secondary" disabled={busy || reviewBusy}>Validate settings</Button>
+      </div>
+    </div>}
     {error && <Notice title="Validation unavailable" tone="error">{error}</Notice>}
     {saved && <Notice title="Draft saved">Bookmark this page to reopen the saved settings. Saving does not approve or start a load test.</Notice>}
     {draft && <p>Draft revision {draft.revision}. <a href={`/experiments/new/?draft=${encodeURIComponent(draft.id)}`}>Reload saved draft</a></p>}
