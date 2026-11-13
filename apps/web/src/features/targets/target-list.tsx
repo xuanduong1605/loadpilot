@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Button, Notice } from '../../components/form-controls';
+import { PageHeading } from '../../components/console-ui';
 import { api } from '../../lib/api';
 import { Icon } from '../../components/icon';
+import guide from '../../components/task-guide.module.css';
 import { SystemTable } from './system-table';
 import type { TargetPage } from './types';
 import styles from './targets.module.css';
@@ -27,10 +29,9 @@ export function TargetList({ dashboard = false }: { dashboard?: boolean }) {
   }, [offset, archived, retry]);
 
   return <>
-    <div className={styles.heading}><h1>{dashboard ? 'Dashboard' : 'Systems'}</h1>
-      <Link className={styles.action} href="/targets/detail/?new=1"><Icon name="plus" width={16} height={16} /> Register system</Link></div>
+    <PageHeading title={dashboard ? 'Dashboard' : 'Systems'} actions={<Link className={guide.button} href="/targets/detail/?new=1"><Icon name="plus" width={16} height={16} />Register system</Link>} />
     <div className={styles.toolbar}>{dashboard ? <h2>System connections</h2> : <label><input type="checkbox" checked={archived} onChange={event => { setArchived(event.target.checked); setOffset(0); }} /> Include archived systems</label>}
-      <span>{page && !loading && !error ? `${page.total} registered` : ''}</span></div>
+      {page && !loading && !error && <small>{page.total} registered</small>}</div>
     {loading && <p role="status">Loading systems…</p>}
     {error && <><Notice title="Cannot load systems" tone="error">{error}</Notice><div className={styles.actions}><Button onClick={() => setRetry(retry + 1)}>Try again</Button></div></>}
     {!loading && !error && page && <>

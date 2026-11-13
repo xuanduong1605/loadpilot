@@ -2,24 +2,23 @@
 .editorPane { display: grid; min-width: 0; gap: 12px; }
 .panelTitle { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .panelTitle h2 { margin: 0; }
-.panelTitle > span { color: var(--muted); font-size: 12px; }
-.panel .planned { margin: 0; color: var(--warning); font-size: 12px; }
+.panelTitle > span { color: var(--muted); font-size: var(--text-metadata); }
+.panel .planned { margin: 0; color: var(--warning); font-size: var(--text-metadata); }
 .panel { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow); }
-.panel h2 { font-size: 14px; margin: 0 0 16px; }
-.panel p { font-size: 13px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
+.panel h2 { margin: 0 0 16px; }
+.panel p { font-size: var(--text-body); line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
 .fields { display: grid; gap: 12px; margin-block: 16px; }
-.fields label { font-size: 12px; font-weight: 500; }
+.fields label { font-size: var(--text-control); font-weight: 500; }
 .codeEditor { min-width: 0; width: 100%; border: 1px solid var(--line-strong); border-radius: var(--radius-md); overflow: hidden; }
 .editorTools { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
-.editorTools button { font-size: 12px; padding-inline: 8px; }
+.editorTools button { font-size: var(--text-control); padding-inline: 8px; }
 .editorTools button[aria-pressed='true'] { background: var(--primary-soft); }
 .editorHost { min-width: 0; width: 100%; overflow: hidden; }
 .editorHost :global(.cm-editor) { min-width: 0; max-width: 100%; }
-.editorStatus { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding: 8px 10px; font-size: 11px; color: var(--muted); background: var(--canvas); }
-.panel .editorHelp { margin: 8px 0 16px; font-size: 11px; color: var(--muted); }
+.editorStatus { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding: 8px 10px; font-size: var(--text-metadata); color: var(--muted); background: var(--canvas); }
+.panel .editorHelp { margin: 8px 0 16px; font-size: var(--text-metadata); color: var(--muted); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
 .version { border-top: 1px solid var(--line); padding-top: 16px; }
-.version h3 { font-size: 14px; }
 .version code { overflow-wrap: anywhere; }
 @media (max-width: 850px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 480px) { .panel { padding: 16px; } }

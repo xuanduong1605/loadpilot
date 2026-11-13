@@ -7,7 +7,7 @@
 .theme .button, .theme .secondary {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 44px;
   padding: 10px 16px; border: 1px solid var(--guide-ink); border-radius: 6px;
-  font: 500 14px/1.5 var(--guide-font); text-decoration: none;
+  font: 500 var(--text-control)/1.5 var(--guide-font); text-decoration: none;
   background: var(--guide-ink); color: var(--guide-canvas); cursor: pointer;
 }
 .theme .button:hover:not(:disabled) { background: var(--guide-blue); }
@@ -18,22 +18,22 @@
 .field input, .field select, .field textarea, .input {
   display: block; width: 100%; min-width: 0; min-height: 42px; padding: 9px 11px;
   border: 1px solid var(--guide-blue); border-radius: 4px; color: var(--guide-ink);
-  background: var(--guide-canvas); font: 14px/1.5 var(--guide-font);
+  background: var(--guide-canvas); font: var(--text-control)/1.5 var(--guide-font);
 }
 .field input[aria-invalid='true'], .field select[aria-invalid='true'], .field textarea[aria-invalid='true'] { border-color: var(--danger); outline-color: var(--danger); }
-.hint, .error { font-size: 13px; font-weight: 400; line-height: 1.6; }
+.hint, .error { font-size: var(--text-metadata); font-weight: 400; line-height: 1.6; }
 .error { display: flex; align-items: baseline; gap: 7px; margin: 0; color: var(--danger); font-weight: 500; }
 .textLink { display: inline-flex; align-items: center; gap: 6px; color: var(--guide-ink); font-weight: 500; text-underline-offset: 4px; }
-.status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; line-height: 1.5; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-metadata); line-height: 1.5; }
 .status::before { content: ''; width: 7px; height: 7px; border: 1px solid currentColor; border-radius: 50%; flex-shrink: 0; }
 .status[data-state='READY']::before { background: currentColor; }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .tableScroll { min-width: 0; overflow-x: auto; scrollbar-color: var(--guide-blue) var(--guide-canvas); }
-.table { width: 100%; border-collapse: collapse; text-align: left; font: 13px/1.6 var(--mono); }
+.table { width: 100%; border-collapse: collapse; text-align: left; font: var(--text-body)/1.6 var(--mono); }
 .table th { padding: 10px 12px; border-block: 1px solid var(--guide-blue); color: var(--guide-ink); background: var(--surface); font-family: var(--guide-font); font-weight: 500; white-space: nowrap; }
 .table td { padding: 14px 12px; border-bottom: 1px solid var(--guide-blue); vertical-align: top; }
 .table a { text-underline-offset: 4px; }
 .table td:first-child { min-width: 240px; max-width: 330px; overflow-wrap: anywhere; }
 .table td:not(:first-child) { min-width: 130px; }
-.table small { display: block; font-size: 12px; line-height: 1.7; }
+.table small { display: block; font-size: var(--text-metadata); line-height: 1.7; }
 .skeleton { display: block; height: 16px; border-radius: 3px; background: var(--guide-blue); opacity: .15; }

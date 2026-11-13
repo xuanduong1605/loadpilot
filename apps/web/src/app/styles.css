@@ -30,6 +30,14 @@
   color-scheme: light;
   --guide-canvas: #fff; --guide-ink: #004e89; --guide-blue: #1a659e; --guide-peach: #f7c59f; --guide-orange: #ff6b35;
   --guide-font: Lexend, ui-sans-serif, system-ui, sans-serif;
+  --text-page-title: 1.75rem;
+  --text-section-title: 1.125rem;
+  --text-subheading: 1rem;
+  --text-body: .875rem;
+  --text-control: var(--text-body);
+  --text-metadata: .75rem;
+  --text-code: .8125rem;
+  --text-metric: 1.5rem;
   --canvas: var(--guide-canvas); --surface: var(--canvas);
   --surface-hover: color-mix(in srgb, var(--guide-peach) 22%, var(--canvas));
   --ink: var(--guide-ink); --muted: #34576d; --line: #a2b8b3; --line-strong: var(--guide-blue);
@@ -42,8 +50,8 @@
 }
 :root[data-compact-layout='true'] { --workspace-padding: 20px; --workspace-padding-medium: 18px; --workspace-padding-small: 14px; --navigation-gap: 2px; --navigation-link-height: 36px; --navigation-link-padding: 7px; }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.55 var(--guide-font); -webkit-font-smoothing: antialiased; }
-button, input, select, textarea { font: inherit; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: var(--text-body)/1.55 var(--guide-font); -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; font-size: var(--text-control); }
 input, select, textarea { accent-color: var(--primary); caret-color: var(--primary-hover); }
 input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 input[type='checkbox'] { width: 16px; height: 16px; flex-shrink: 0; }
@@ -52,11 +60,13 @@ button, a, input, select, textarea { transition: background-color 160ms, border-
 a { color: inherit; text-underline-offset: 4px; }
 svg { flex-shrink: 0; }
 code, pre, time, table { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-code { font-size: .92em; }
+code, pre { font-size: var(--text-code); }
+small, thead th { font-size: var(--text-metadata); }
 h1, h2, h3, p { overflow-wrap: anywhere; }
-h1 { font-size: 24px; line-height: 1.3; font-weight: 620; letter-spacing: -.025em; margin: 0 0 8px; }
-h2 { font-size: 14px; line-height: 1.5; font-weight: 600; }
-h3 { font-size: 13px; font-weight: 600; }
+h1 { font-size: var(--text-page-title); line-height: 1.3; font-weight: 620; letter-spacing: -.025em; margin: 0 0 8px; }
+h2 { font-size: var(--text-section-title); line-height: 1.4; font-weight: 600; }
+h3 { font-size: var(--text-subheading); line-height: 1.4; font-weight: 600; }
+@media (max-width: 600px) { :root { --text-page-title: 1.5rem; } }
 button:disabled, input:disabled, textarea:disabled { cursor: not-allowed; }
 ::selection { background: var(--guide-ink); color: var(--guide-canvas); }
 :focus-visible { outline: 2px solid var(--primary-hover); outline-offset: 3px; }

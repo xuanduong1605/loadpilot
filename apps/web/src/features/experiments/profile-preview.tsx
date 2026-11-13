@@ -33,7 +33,7 @@ export function ProfilePreview({ profile, durationSeconds, warmupSeconds }: { pr
       <rect x={x(warmupSeconds)} y={top} width={x(warmupSeconds + profile.measurementSeconds) - x(warmupSeconds)} height={bottom - top} fill="var(--primary-soft)" />
       <path d={`M${left},${top}V${bottom}H${right}`} fill="none" stroke="var(--line-strong)" />
       <polyline points={points.join(' ')} fill="none" stroke="var(--primary)" strokeWidth={2} />
-      <g fill="var(--muted)" fontSize={11}>
+      <g fill="var(--muted)" style={{ fontSize: 'var(--text-metadata)' }}>
         <text x={left - 8} y={top + 4} textAnchor="end">{peak}</text><text x={left - 8} y={bottom + 4} textAnchor="end">0</text>
         <text x={left} y={bottom + 23}>0 s</text><text x={right} y={bottom + 23} textAnchor="end">{durationSeconds} s</text>
       </g>

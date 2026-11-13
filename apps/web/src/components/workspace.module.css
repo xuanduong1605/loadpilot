@@ -15,14 +15,11 @@
 .accountArea { margin-left: auto; display: flex; align-items: center; --ink: var(--guide-ink); --muted: var(--guide-ink); --line: var(--guide-blue); --line-strong: var(--guide-ink); --primary-soft: var(--guide-peach); --primary-hover: var(--guide-ink); --danger: var(--guide-ink); }
 .content { width: 100%; padding: var(--workspace-padding, 32px) clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .content:focus { outline: none; }
-.heading { margin-bottom: 28px; }
-.heading h1 { margin: 0 0 8px; font-size: 28px; }
-.heading p { max-width: 72ch; margin: 0; color: var(--muted); }
 .empty { display: flex; flex-direction: column; align-items: flex-start; padding: 28px 24px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
-.empty h2 { font-size: 18px; margin: 0 0 8px; }
+.empty h2 { margin: 0 0 8px; }
 .missingPage h1 { color: var(--danger); }
 .empty p { max-width: 68ch; color: var(--muted); margin: 0 0 24px; }
-.textLink { display: inline-flex; align-items: center; gap: 8px; color: var(--primary-hover); font-size: 14px; font-weight: 500; }
+.textLink { display: inline-flex; align-items: center; gap: 8px; color: var(--primary-hover); font-size: var(--text-control); font-weight: 500; }
 @media (max-width: 999px) {
   .workspace[data-navigation='auto'] { --sidebar-width: 64px; }
   .workspace[data-navigation='auto'] .sidebar a span { display: none; }

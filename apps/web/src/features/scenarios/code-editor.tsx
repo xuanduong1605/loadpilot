@@ -55,7 +55,7 @@ export default function CodeEditor({ value, onChange, disabled, toolsHost }: {
           editing.current.of([]), wrapping.current.of([]),
           EditorView.contentAttributes.of({ 'aria-label': 'Script source', 'aria-describedby': 'script-editor-help', spellcheck: 'false' }),
           EditorView.theme({
-            '&': { fontSize: '13px', backgroundColor: 'var(--surface)', color: 'var(--ink)' },
+            '&': { fontSize: 'var(--text-code)', backgroundColor: 'var(--surface)', color: 'var(--ink)' },
             '.cm-scroller': { fontFamily: 'var(--mono)', overflow: 'auto', height: 'clamp(360px, 62dvh, 760px)' },
             '.cm-content': { padding: '12px 0' },
             '.cm-gutters': { backgroundColor: 'var(--surface)', color: 'var(--muted)', borderColor: 'var(--line)' },

@@ -4,13 +4,13 @@
 .formSide > .brand { display: flex; margin: 0 auto 28px; }
 .formContainer { padding: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 .formHeading { margin-bottom: 26px; }
-.formHeading h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: -.6px; font-weight: 600; }
-.formHeading p { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0; }
+.formHeading h1 { margin: 0 0 8px; }
+.formHeading p { color: var(--muted); font-size: var(--text-body); line-height: 1.6; margin: 0; }
 .form { display: grid; gap: 20px; }
 .passwordField { position: relative; }
 .passwordField input { padding-right: 50px; }
 .passwordToggle { position: absolute; display: grid; place-items: center; top: 27px; right: 1px; width: 44px; height: 42px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; }
 .passwordToggle:hover { color: var(--primary); background: var(--primary-soft); }
-.submit { width: 100%; min-height: 44px; font-size: 14px; }
-.accessHelp { color: var(--muted); font-size: 13px; text-align: center; line-height: 1.6; margin: 22px 0 0; }
+.submit { width: 100%; min-height: 44px; font-size: var(--text-control); }
+.accessHelp { color: var(--muted); font-size: var(--text-body); text-align: center; line-height: 1.6; margin: 22px 0 0; }
 @media (max-width: 420px) { .page { padding: 28px 16px; } .formContainer { padding: 24px; } }
