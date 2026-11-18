@@ -24,7 +24,7 @@ public final class RuntimeProbeCommand {
             if(args.length<4 || !Set.of("begin","prepare","capture","publish").contains(args[0]) || ((args[0].equals("prepare") || args[0].equals("capture"))?args.length!=6:args.length!=4))throw denied();
             var json=new ObjectMapper().findAndRegisterModules().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES).disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT).disable(MapperFeature.ALLOW_COERCION_OF_SCALARS);
             var scope=json.readValue(read(Path.of(args[1]),2097152),Scope.class);String url=review(scope.review(),json);var original=scope.review().sourcePlan();var body=json.readTree(original.canonicalJson());var frozen=json.treeToValue(body.path("clusterBinding"),ExecutionClusterClients.Binding.class);
-            if(scope.probeId()==null || scope.nodes()==null || scope.nodes().isEmpty() || scope.nodes().size()>32 || scope.trustedKeys()==null || !frozen.operations().containsAll(List.of("RUNTIME","PROBE_READ")))throw denied();
+            if(scope.probeId()==null || scope.nodes()==null || scope.nodes().isEmpty() || scope.nodes().size()>32 || scope.trustedKeys()==null || !frozen.permitsRuntimeProbe())throw denied();
             var material=json.readValue(read(Path.of(args[2]),131072),Material.class);
             var connections=new ExecutionClusterClients.MaterialSource(){
                 private void check(UUID id){if(!id.equals(frozen.targetId()))throw denied();}

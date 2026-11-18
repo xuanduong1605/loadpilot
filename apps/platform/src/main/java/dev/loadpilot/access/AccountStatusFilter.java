@@ -1,5 +1,6 @@
 package dev.loadpilot.access;
 
+import dev.loadpilot.shared.HttpRequestLog;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,6 +43,7 @@ public class AccountStatusFilter extends OncePerRequestFilter {
                 revoke(request, response);
                 return;
             } catch (DataAccessException | AuthenticationServiceException unavailable) {
+                HttpRequestLog.recordFailure(unavailable);
                 responses.error(response, 503, "ACCESS_UNAVAILABLE", "Sign-in service is unavailable. Try again later.");
                 return;
             }

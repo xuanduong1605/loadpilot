@@ -6,6 +6,7 @@ import dev.loadpilot.access.LoginThrottle;
 import dev.loadpilot.access.IdleSessionFilter;
 import dev.loadpilot.access.AccountStatusFilter;
 import dev.loadpilot.access.DatabaseAccounts;
+import dev.loadpilot.shared.HttpRequestLog;
 import javax.sql.DataSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -58,9 +59,10 @@ class SecurityConfig {
                             }
                         })
                         .failureHandler((req, res, ex) -> {
-                            if (ex instanceof AuthenticationServiceException)
+                            if (ex instanceof AuthenticationServiceException) {
+                                HttpRequestLog.recordFailure(ex);
                                 responses.error(res, 503, "ACCESS_UNAVAILABLE", "Sign-in service is unavailable. Try again later.");
-                            else if (audit.record(res, null, "LOGIN", "DENIED"))
+                            } else if (audit.record(res, null, "LOGIN", "DENIED"))
                                 responses.error(res, 401, "INVALID_CREDENTIALS", "Username or password is incorrect.");
                         }))
                 .logout(logout -> logout.logoutUrl("/api/access/logout").deleteCookies("LOADPILOT_SESSION")

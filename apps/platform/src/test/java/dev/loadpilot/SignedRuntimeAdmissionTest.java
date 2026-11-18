@@ -150,7 +150,18 @@ class SignedRuntimeAdmissionTest {
         Server() throws Exception {
             var cert=new HeldCertificate.Builder().commonName("runtime-fixture").addSubjectAlternativeName("127.0.0.1").certificateAuthority(0).build();ca=cert.certificatePem();
             server=HttpsServer.create(new InetSocketAddress("127.0.0.1",0),0);server.setHttpsConfigurator(new HttpsConfigurator(new HandshakeCertificates.Builder().heldCertificate(cert).build().sslContext()));server.setExecutor(executor);
-            server.createContext("/",exchange->{String path=exchange.getRequestURI().toString();requests.add(exchange.getRequestMethod()+" "+path);int code=status==200 && !reads.containsKey(path) && !raw.containsKey(path)?missingStatus:status;if(code==302)exchange.getResponseHeaders().set("Location",origin()+"/trap");byte[] bytes=(code==200?raw.getOrDefault(path,Objects.toString(reads.get(path),"{}")):"{\"message\":\"private-value\"}").getBytes(java.nio.charset.StandardCharsets.UTF_8);exchange.sendResponseHeaders(code,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();});server.start();
+            server.createContext("/", exchange -> {
+                String path=exchange.getRequestURI().toString();
+                requests.add(exchange.getRequestMethod()+" "+path);
+                int code=status==200 && !reads.containsKey(path) && !raw.containsKey(path)?missingStatus:status;
+                if(!List.of("Bearer fixture-token").equals(exchange.getRequestHeaders().get("Authorization")))code=403;
+                if(code==302)exchange.getResponseHeaders().set("Location",origin()+"/trap");
+                byte[] bytes=(code==200?raw.getOrDefault(path,Objects.toString(reads.get(path),"{}")):"{\"message\":\"private-value\"}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(code,bytes.length);
+                exchange.getResponseBody().write(bytes);
+                exchange.close();
+            });
+            server.start();
         }
         String origin(){return "https://127.0.0.1:"+server.getAddress().getPort();}
         public void close(){server.stop(0);executor.shutdownNow();}

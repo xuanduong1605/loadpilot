@@ -49,8 +49,23 @@ class AccessSecurityTest {
     }
 
     @Test void wrongLoginIsGenericAndAuditsNoSubmittedUsername() throws Exception {
-        mvc.perform(post("/api/access/login").with(csrf()).param("username", "untrusted-input").param("password", "wrong"))
-                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+        var log=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(dev.loadpilot.shared.HttpRequestLog.class);
+        var events=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        events.start();
+        log.addAppender(events);
+        try {
+            String id=mvc.perform(post("/api/access/login").with(csrf())
+                            .param("username", "untrusted-input").param("password", "untrusted-password"))
+                    .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"))
+                    .andReturn().getResponse().getHeader(dev.loadpilot.shared.HttpRequestLog.HEADER);
+            assertThat(id).matches("[0-9a-f-]{36}");
+            assertThat(events.list).singleElement().satisfies(event -> assertThat(event.getFormattedMessage())
+                    .contains("request_id="+id,"route=/api/access/login","status=401","code=INVALID_CREDENTIALS")
+                    .doesNotContain("untrusted-input","untrusted-password"));
+        } finally {
+            log.detachAppender(events);
+            events.stop();
+        }
         verify(database).update(anyString(), isNull(), eq("LOGIN"), eq("DENIED"));
     }
 

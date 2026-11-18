@@ -1,6 +1,7 @@
 package dev.loadpilot.access;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.loadpilot.shared.HttpRequestLog;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Instant;
@@ -14,6 +15,7 @@ public class AccessResponses {
     public AccessResponses(ObjectMapper json) { this.json = json; }
 
     public void error(HttpServletResponse response, int status, String code, String message) throws IOException {
+        HttpRequestLog.recordErrorCode(code);
         response.setStatus(status);
         write(response, Map.of("code", code, "message", message, "timestamp", Instant.now().toString()));
     }

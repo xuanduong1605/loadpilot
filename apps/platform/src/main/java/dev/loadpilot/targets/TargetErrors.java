@@ -1,5 +1,6 @@
 package dev.loadpilot.targets;
 
+import dev.loadpilot.shared.HttpRequestLog;
 import java.time.Instant;
 import java.util.Map;
 import org.springframework.dao.DataAccessException;
@@ -18,7 +19,8 @@ public class TargetErrors {
     @ExceptionHandler(DuplicateKeyException.class) ResponseEntity<?> duplicate() {
         return response(409, "TARGET_CONFLICT", "An active system already uses this name.");
     }
-    @ExceptionHandler(DataAccessException.class) ResponseEntity<?> unavailable() {
+    @ExceptionHandler(DataAccessException.class) ResponseEntity<?> unavailable(DataAccessException failure) {
+        HttpRequestLog.recordFailure(failure);
         return response(503, "TARGETS_UNAVAILABLE", "Systems are unavailable. Try again later.");
     }
     @ExceptionHandler({MethodArgumentNotValidException.class, MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class})

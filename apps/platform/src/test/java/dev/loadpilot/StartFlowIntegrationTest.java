@@ -51,7 +51,7 @@ class StartFlowIntegrationTest {
  RunIntents.Start input() throws Exception {
   var request=helper.runRequest("export default function(){}",60);UUID target=snapshots.get(request.snapshotId()).inputs().target().id();
   var store=mock(ConnectionStore.class);when(store.view(target)).thenReturn(new ConnectionStore.View(1,server.origin(),server.ca,true,"","",false,null));when(store.kubernetesMaterial(target)).thenReturn(new ConnectionStore.KubernetesMaterial(1,server.origin(),server.ca,"fixture-token"));
-  String config=json.writeValueAsString(List.of(Map.of("targetId",target.toString(),"connectionRevision",1,"origin",server.origin(),"addresses",List.of("127.0.0.1"),"namespace","loadpilot-runners","operations",List.of("READ","STOP","PREPARE","ACTIVATE","METRICS","RECOVER"))));
+  String config=json.writeValueAsString(List.of(Map.of("targetId",target.toString(),"connectionRevision",1,"origin",server.origin(),"addresses",List.of("127.0.0.1"),"namespace","loadpilot-runners","operations",List.of("READ","STOP","PREPARE","ACTIVATE","METRICS","RECOVER","RUNTIME","PROBE_READ"))));
   var real=new ExecutionClusterClients(config,json,store);
   when(clients.binding(any(),anyString())).thenAnswer(c->real.binding(c.getArgument(0),c.getArgument(1)));
   when(clients.openPreparation(any(),any(),any(),any())).thenAnswer(c->real.openPreparation(c.getArgument(0),c.getArgument(1),c.getArgument(2),c.getArgument(3)));
@@ -66,13 +66,36 @@ class StartFlowIntegrationTest {
  UUID start(RunIntents.Start request) throws Exception {
   String body=mvc.perform(post("/api/experiments/runs").with(csrf()).contentType("application/json").content(json.writeValueAsString(request))).andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("QUEUED")).andReturn().getResponse().getContentAsString();UUID id=UUID.fromString(json.readTree(body).path("id").asText());owned.add(id);return id;
  }
+ @Test void runtimeProbeScopeExportsCurrentSnapshotAndRejectsTargetDriftWithoutStarting() throws Exception {
+  var request=input();
+  UUID snapshotId=request.snapshotId();
+  String endpoint="/api/experiments/snapshots/"+snapshotId+"/runtime-probe-scope";
+  mvc.perform(get(endpoint)).andExpect(status().isOk())
+     .andExpect(jsonPath("$.sourcePlan.sha256").isNotEmpty())
+     .andExpect(jsonPath("$.executionAvailable").value(false));
+
+  UUID target=snapshots.get(snapshotId).inputs().target().id();
+  db.update("UPDATE registered_target SET revision=revision+1 WHERE id=?",target);
+  mvc.perform(get(endpoint)).andExpect(status().isConflict())
+     .andExpect(jsonPath("$.message").value("Target changed after review. Review a new snapshot."));
+  assertThat(db.queryForObject("SELECT count(*) FROM experiment_run WHERE snapshot_id=?",Integer.class,snapshotId)).isZero();
+  assertThat(server.requests).isEmpty();
+  verifyNoInteractions(admission);
+ }
  @Test void publicStartDrivesScopedPreparationActivationLiveMetricsAndStopWithoutDuplicateEffects() throws Exception {
-  var request=input();UUID id=start(request);
+  var request=input();
+  var scope=mvc.perform(get("/api/experiments/snapshots/"+request.snapshotId()+"/runtime-probe-scope"))
+     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+  var exported=json.treeToValue(json.readTree(scope).path("sourcePlan"),K6PlanEnvelope.Prepared.class);
+  UUID id=start(request);
   try {
    assertThat(queue.read(id).state()).isEqualTo("QUEUED");assertThat(server.requests).isEmpty();
    mvc.perform(post("/api/experiments/runs").with(csrf()).contentType("application/json").content(json.writeValueAsString(request))).andExpect(status().isAccepted()).andExpect(jsonPath("$.id").value(id.toString()));
    assertThat(db.queryForObject("SELECT count(*) FROM experiment_start_workflow WHERE run_id=?",Integer.class,id)).isEqualTo(1);
    assertThat(processor.process(id)).isTrue();assertThat(queue.read(id).state()).isEqualTo("OBSERVING");assertThat(server.requests.stream().filter(s->s.startsWith("POST ")).count()).isEqualTo(3);assertThat(server.requests.stream().filter(s->s.startsWith("PATCH ")).count()).isEqualTo(1);
+   var saved=helper.plans.get(id);
+   assertThat(SignedRuntimeEvidence.profile(new K6PlanEnvelope.Prepared(saved.canonicalJson(),saved.sha256()),json))
+      .isEqualTo(SignedRuntimeEvidence.profile(exported,json));
    assertThat(processor.process(id)).isFalse();assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.SUBMITTING);
    monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.RUNNING);
    var sampler=new RunPartialResultSchedule(partialResults,runs,workerMetrics);

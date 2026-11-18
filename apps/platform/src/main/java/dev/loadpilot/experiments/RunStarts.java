@@ -1,6 +1,7 @@
 package dev.loadpilot.experiments;
 
 import dev.loadpilot.integrations.k6.RuntimeAdmission;
+import dev.loadpilot.shared.HttpRequestLog;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
@@ -13,7 +14,10 @@ public class RunStarts {
     public boolean available(){return monitoring && admission.available();}
     @Transactional(propagation=Propagation.NEVER) public RunIntents.Run request(RunIntents.Start input,String actor){
         if(runs.findRequest(input.requestKey())!=null)return runs.reserve(input,actor); // Replay only; never adopt internal/legacy work.
-        if(!available())throw new Unavailable();
+        if(!available()) {
+            HttpRequestLog.recordReason(monitoring ? "RUNTIME_ADMISSION_UNCONFIGURED" : "MONITOR_DISABLED");
+            throw new Unavailable();
+        }
         return workflows.reserve(input,actor); // Run/attempt/intent and queue entry commit together.
     }
 }

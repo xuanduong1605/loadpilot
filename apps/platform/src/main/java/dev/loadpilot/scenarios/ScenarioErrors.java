@@ -1,5 +1,6 @@
 package dev.loadpilot.scenarios;
 
+import dev.loadpilot.shared.HttpRequestLog;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -16,7 +17,8 @@ public class ScenarioErrors {
     ResponseEntity<?> invalid(Exception error) {
         return ResponseEntity.badRequest().body(Map.of("code", "SCENARIO_INVALID", "message", "Check the scenario name, source and version fields."));
     }
-    @ExceptionHandler(org.springframework.dao.DataAccessException.class) ResponseEntity<?> database() {
+    @ExceptionHandler(org.springframework.dao.DataAccessException.class) ResponseEntity<?> database(org.springframework.dao.DataAccessException failure) {
+        HttpRequestLog.recordFailure(failure);
         return ResponseEntity.status(503).body(Map.of("code", "SCENARIOS_UNAVAILABLE", "message", "Scenario storage is unavailable. Your edits have not been discarded."));
     }
 }

@@ -32,7 +32,12 @@ public class ExperimentSnapshots {
                          @JsonInclude(JsonInclude.Include.NON_NULL) Integer reservedAttemptsPerLoad,
                          @JsonInclude(JsonInclude.Include.NON_NULL) LoadProfile loadProfile,
                          @JsonInclude(JsonInclude.Include.NON_NULL) Integer measurementRate,
-                         @JsonInclude(JsonInclude.Include.NON_NULL) SloPolicy sloPolicy) {}
+                         @JsonInclude(JsonInclude.Include.NON_NULL) SloPolicy sloPolicy) {
+        void requireCurrentSingleRun() {
+            if (!"experiment-input-v5".equals(schemaVersion) || !"SINGLE_RUN".equals(mode))
+                throw new ExperimentDrafts.Problem(400, "This execution slice requires a current single-run snapshot.");
+        }
+    }
     public record Preview(Inputs inputs, String sha256) {}
     public record Finalize(@NotNull @Positive Long revision, @NotNull @Pattern(regexp="[0-9a-f]{64}") String reviewHash,
                            @NotNull @AssertTrue Boolean acknowledged) {}

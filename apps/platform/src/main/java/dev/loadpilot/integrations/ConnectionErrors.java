@@ -1,5 +1,6 @@
 package dev.loadpilot.integrations;
 
+import dev.loadpilot.shared.HttpRequestLog;
 import dev.loadpilot.targets.TargetProblem;
 import java.time.Instant;
 import java.util.Map;
@@ -17,7 +18,10 @@ public class ConnectionErrors {
     @ExceptionHandler(org.springframework.dao.DuplicateKeyException.class) ResponseEntity<?> duplicate() {
         return error(409, "TARGET_CONFLICT", "A system with this name already exists. Choose another name or open the existing system.");
     }
-    @ExceptionHandler(DataAccessException.class) ResponseEntity<?> database() { return error(503, "CONNECTION_UNAVAILABLE", "Connection storage is unavailable. Try again later."); }
+    @ExceptionHandler(DataAccessException.class) ResponseEntity<?> database(DataAccessException failure) {
+        HttpRequestLog.recordFailure(failure);
+        return error(503, "CONNECTION_UNAVAILABLE", "Connection storage is unavailable. Try again later.");
+    }
     @ExceptionHandler({MethodArgumentNotValidException.class, MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class})
     ResponseEntity<?> invalid(Exception problem) {
         String message = "Check connection fields and certificate authorities.";

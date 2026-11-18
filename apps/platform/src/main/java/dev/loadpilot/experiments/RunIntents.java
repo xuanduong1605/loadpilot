@@ -55,8 +55,7 @@ public class RunIntents {
             return get(prior.getFirst()[0]);
         }
         var input = snapshot.inputs();
-        if (!"experiment-input-v5".equals(input.schemaVersion()) || !"SINGLE_RUN".equals(input.mode()))
-            throw new ExperimentDrafts.Problem(400, "This execution slice requires a current single-run snapshot.");
+        input.requireCurrentSingleRun();
         db.queryForObject("SELECT id FROM registered_target WHERE id=? FOR UPDATE", UUID.class, input.target().id());
         var existing = db.queryForList("SELECT id FROM experiment_run WHERE snapshot_id=?", UUID.class, snapshot.id());
         if (!existing.isEmpty()) throw new ExperimentDrafts.Problem(409, "This snapshot already has a run. Retry its original start key or review a new draft revision.");
@@ -86,7 +85,9 @@ public class RunIntents {
     @Transactional public void verifyDispatchScope(UUID runId) {
         verifyScope(snapshots.get(get(runId).snapshotId()).inputs());
     }
-    @Transactional(readOnly=true) public void verifySnapshotScope(UUID snapshotId){verifyScope(snapshots.get(snapshotId).inputs());}
+    @Transactional public void verifySnapshotScope(UUID snapshotId) {
+        verifyScope(snapshots.get(snapshotId).inputs());
+    }
     private Run lock(UUID id) {
         var ids=db.queryForList("SELECT id FROM experiment_run WHERE id=? FOR UPDATE",UUID.class,id);
         if(ids.isEmpty()) throw new ExperimentDrafts.Problem(404,"Experiment run not found.");

@@ -82,7 +82,8 @@ class ConnectionIntegrationTest {
     @Test void oversizedRequestsAreBoundedBeforeCredentialDeserialization() throws Exception {
         var target=create(); String url="/api/integrations/targets/"+target.id()+"/connection";
         mvc.perform(put(url).with(csrf()).contentType("application/json").content("x".repeat(32769)))
-                .andExpect(status().isPayloadTooLarge()).andExpect(jsonPath("$.code").value("REQUEST_TOO_LARGE"));
+                .andExpect(status().isPayloadTooLarge()).andExpect(jsonPath("$.code").value("REQUEST_TOO_LARGE"))
+                .andExpect(header().exists(dev.loadpilot.shared.HttpRequestLog.HEADER));
         var chunked = new org.springframework.mock.web.MockHttpServletRequest("PUT",url) {
             @Override public long getContentLengthLong() { return -1; }
         };

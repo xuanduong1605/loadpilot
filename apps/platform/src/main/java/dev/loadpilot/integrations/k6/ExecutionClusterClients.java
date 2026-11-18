@@ -22,6 +22,9 @@ public class ExecutionClusterClients {
     public record Scope(UUID targetId,long connectionRevision,String namespace,String workerName,String jobUid,Access access) {}
     public record Binding(UUID targetId,long connectionRevision,String origin,List<String> addresses,String namespace,List<String> operations,String caSha256) {
         public Binding { addresses=addresses.stream().distinct().sorted().toList();operations=operations.stream().distinct().sorted().toList(); }
+        public boolean permitsRuntimeProbe() {
+            return operations.contains(Access.RUNTIME.name()) && operations.contains(Access.PROBE_READ.name());
+        }
     }
     private record Grant(long revision,URI origin,List<InetAddress> addresses,String namespace,Set<Access> operations) {}
     private record Preparation(String path,JsonNode body) {}
@@ -173,7 +176,7 @@ public class ExecutionClusterClients {
         try {
             var client=new ApiClient().setBasePath(endpoint.toString());
             if(material.ca()!=null && !material.ca().isBlank()) client.setSslCaCert(new ByteArrayInputStream(material.ca().getBytes(StandardCharsets.US_ASCII)));
-            client.setApiKey(material.token());client.setApiKeyPrefix("Bearer");
+            String authorization="Bearer "+material.token();
             String host=endpoint.getHost().replace("[","").replace("]","");int port=endpoint.getPort()<0?443:endpoint.getPort();
             String job="/apis/batch/v1/namespaces/"+scope.namespace()+"/jobs/"+scope.workerName(),pods="/api/v1/namespaces/"+scope.namespace()+"/pods";
             client.setHttpClient(client.getHttpClient().newBuilder().proxy(Proxy.NO_PROXY).dns(requested->{if(!host.equalsIgnoreCase(requested))throw new UnknownHostException("Execution API host changed.");return grant.addresses();})
@@ -208,7 +211,8 @@ public class ExecutionClusterClients {
                         if(stop){var body=request.body();if(body==null || body.contentLength()<0 || body.contentLength()>8192)throw new IOException("Execution stop body rejected.");
                             var buffer=new okio.Buffer();body.writeTo(buffer);var value=json.readTree(buffer.readUtf8());
                             if(!scope.jobUid().equals(value.path("preconditions").path("uid").asText()) || !"Foreground".equals(value.path("propagationPolicy").asText()) || value.has("gracePeriodSeconds"))throw new IOException("Execution stop identity rejected.");}
-                        return chain.proceed(request);
+                        // Apply the scoped credential for both SDK calls and raw OkHttp requests.
+                        return chain.proceed(request.newBuilder().header("Authorization",authorization).build());
                     }).build());
             return new Session(KubernetesWorkerTransport.bound(client),material.revision());
         } catch(RuntimeException invalid){throw new Problem(503,"Execution TLS client could not be configured.");}

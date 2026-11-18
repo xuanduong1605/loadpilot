@@ -466,6 +466,18 @@ class ExperimentSnapshotIntegrationTest {
         mvc.perform(put("/api/experiments/snapshots/" + id).with(csrf()).contentType("application/json").content("{}")).andExpect(status().isMethodNotAllowed());
         assertThat(db.queryForObject("SELECT count(*) FROM access_audit WHERE object_id=?::uuid AND action='EXPERIMENT_INPUTS_FINALIZED'", Integer.class, id)).isEqualTo(1);
     }
+    @Test @Transactional(propagation=Propagation.NOT_SUPPORTED)
+    void runtimeProbeScopeRejectsAdaptiveSnapshotsAndReportsMissingRuntimePolicy() throws Exception {
+        var adaptive=fixture(true);
+        String adaptiveId=finalize(adaptive,finalizeRequest(review(adaptive)));
+        mvc.perform(get("/api/experiments/snapshots/"+adaptiveId+"/runtime-probe-scope"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("DRAFT_INVALID"));
+
+        var single=runRequest();
+        mvc.perform(get("/api/experiments/snapshots/"+single.snapshotId()+"/runtime-probe-scope"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("EXECUTION_RUNTIME_UNCONFIGURED"));
+    }
     @Test void rejectsChangedTargetHashDraftRevisionAndMissingAcknowledgement() throws Exception {
         var fixture = fixture(true); var request = finalizeRequest(review(fixture)); request.put("acknowledged", false);
         mvc.perform(post("/api/experiments/drafts/" + fixture.draftId() + "/finalize").with(csrf()).contentType("application/json").content(request.toString())).andExpect(status().isBadRequest());

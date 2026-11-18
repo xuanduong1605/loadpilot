@@ -20,8 +20,18 @@ public class RuntimeProbeScopeApi {
     private final int maximumValiditySeconds;
     public RuntimeProbeScopeApi(ExperimentSnapshots.Store snapshots,RunIntents runs,ExecutionRuntimePolicy runtime,ExecutionDestinationPolicy destinations,ExecutionClusterClients clusters,ExecutionSourcePolicy source,ObjectMapper json,Validator validator,@Value("${platform.execution.runtime-evidence-max-validity-seconds:900}") int maximumValiditySeconds){this.snapshots=snapshots;this.runs=runs;this.runtime=runtime;this.destinations=destinations;this.clusters=clusters;this.source=source;this.envelopes=new K6PlanEnvelope(json,validator);this.maximumValiditySeconds=maximumValiditySeconds;}
     @GetMapping("/{id}/runtime-probe-scope") public Review review(@PathVariable UUID id){
-        var snapshot=snapshots.get(id);String canonical=snapshots.canonicalInputs(id);if(!K6PlanEnvelope.hash(canonical).equals(snapshot.sha256()))throw new ExperimentDrafts.Problem(409,"Snapshot changed during review.");
-        runs.verifySnapshotScope(id);source.verify(snapshot.inputs());var policy=runtime.current();var binding=clusters.binding(snapshot.inputs().target().id(),policy.namespace());var pin=destinations.pin(snapshot.inputs().target().baseUrl());
+        var snapshot=snapshots.get(id);
+        var inputs=snapshot.inputs();
+        inputs.requireCurrentSingleRun();
+        String canonical=snapshots.canonicalInputs(id);
+        if(!K6PlanEnvelope.hash(canonical).equals(snapshot.sha256()))throw new ExperimentDrafts.Problem(409,"Snapshot changed during review.");
+        runs.verifySnapshotScope(id);
+        source.verify(inputs);
+        var policy=runtime.current();
+        var binding=clusters.binding(inputs.target().id(),policy.namespace());
+        if(!binding.permitsRuntimeProbe())
+            throw new ExecutionClusterClients.Problem(403,"The execution cluster grant must include RUNTIME and PROBE_READ to export a probe scope.");
+        var pin=destinations.pin(inputs.target().baseUrl());
         var now=OffsetDateTime.now(ZoneOffset.UTC);UUID attempt=UUID.randomUUID();int maximum=Math.toIntExact(snapshot.inputs().executionBounds().maximumAttemptSeconds(snapshot.inputs().settings()));
         var ticket=new RunDispatch.Ticket(UUID.randomUUID(),id,1,attempt,UUID.randomUUID(),UUID.randomUUID(),"lp-"+attempt,maximum,now.plusSeconds(snapshot.inputs().settings().totalBudgetSeconds()),now);
         var plan=envelopes.prepare(snapshot,ticket,policy,pin,binding,now.toInstant());runs.verifySnapshotScope(id);return new Review(plan,canonical,false,maximumValiditySeconds);

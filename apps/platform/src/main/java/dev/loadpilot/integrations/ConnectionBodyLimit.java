@@ -46,7 +46,7 @@ public class ConnectionBodyLimit {
             }
         };
         var registration = new FilterRegistrationBean<OncePerRequestFilter>(filter);
-        registration.setOrder(org.springframework.core.Ordered.HIGHEST_PRECEDENCE);
+        registration.setOrder(org.springframework.core.Ordered.HIGHEST_PRECEDENCE + 1);
         return registration;
     }
 }

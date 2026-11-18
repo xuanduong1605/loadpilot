@@ -1,5 +1,6 @@
 package dev.loadpilot.access;
 
+import dev.loadpilot.shared.HttpRequestLog;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import org.springframework.dao.DataAccessException;
@@ -21,6 +22,7 @@ public class AccessAudit {
                     actor, action, outcome);
             return true;
         } catch (DataAccessException unavailable) {
+            HttpRequestLog.recordFailure(unavailable);
             responses.error(response, 503, "ACCESS_UNAVAILABLE", "Sign-in service is unavailable. Try again later.");
             return false;
         }
