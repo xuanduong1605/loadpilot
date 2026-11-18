@@ -33,7 +33,7 @@ export function returnPath(value: string | null): string {
   // Preserve the dashboard as the sign-in destination for the old bare systems entry point.
   if (!value || value === '/targets/' || value === '/targets/?') return '/';
   const path = value.split('?')[0];
-  return ['/', '/targets/', '/targets/detail/', '/scenarios/', '/scenarios/editor/', '/scenarios/assistant/',
+  return ['/', '/assistant/', '/targets/', '/targets/detail/', '/scenarios/', '/scenarios/editor/', '/scenarios/assistant/',
     '/experiments/', '/experiments/new/', '/experiments/review/', '/experiments/monitor/', '/experiments/planning/',
     '/comparisons/', '/settings/'].includes(path) ? value : '/';
 }

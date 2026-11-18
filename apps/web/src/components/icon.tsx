@@ -2,6 +2,10 @@ import type { SVGProps } from 'react';
 
 const paths = {
   activity: 'M3 12h4l3-8 4 16 3-8h4',
+  message: 'M4 4h16v12H9l-5 4V4Zm4 5h8m-8 3h5',
+  send: 'M12 19V5m-6 6 6-6 6 6',
+  edit: 'm6 14 9-9 4 4-9 9-5 1 1-5Zm7-7 4 4',
+  play: 'M7 4l13 8-13 8V4Z',
   download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
   stop: 'M5 5h14v14H5Z',
   clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4v5l3 2',

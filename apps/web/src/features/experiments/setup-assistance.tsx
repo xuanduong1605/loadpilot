@@ -1,16 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { Button, TextField } from '../../components/form-controls';
+import Link from 'next/link';
+import { TextField } from '../../components/form-controls';
 import { Icon } from '../../components/icon';
 import { StatusBadge } from '../../components/console-ui';
 import styles from '../../components/console-ui.module.css';
 
 export function GoalAssistant() {
-  const [goal, setGoal] = useState('');
-  return <section className={styles.panel} aria-labelledby="goal-title"><div className={styles.panelHead}><h2 id="goal-title">Experiment goals</h2><StatusBadge tone="warning">AI unavailable</StatusBadge></div><div className={styles.body}>
-    <label className={styles.fieldLabel} htmlFor="experiment-goal">Describe your goal in natural language<textarea id="experiment-goal" className={styles.textarea} rows={3} value={goal} onChange={event => setGoal(event.target.value)} maxLength={4000} placeholder="Example: find the load that meets this app's p95 latency and error limits…" /></label>
-    <div className={styles.actions} style={{ marginTop: 12 }}><Button disabled>Parse goal</Button><span className={styles.note}>This description is not saved.</span></div>
+  return <section className={styles.panel} aria-labelledby="goal-title"><div className={styles.panelHead}><h2 id="goal-title">Experiment goals</h2></div><div className={styles.body}>
+    <Link href="/assistant/?task=EDIT">Discuss load goals, thresholds and test settings with the assistant</Link>
   </div></section>;
 }
 

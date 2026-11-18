@@ -11,6 +11,7 @@ const destinations: { href: string; label: string; icon: IconName }[] = [
   { href: '/targets/', label: 'Systems', icon: 'server' },
   { href: '/scenarios/', label: 'Scripts', icon: 'scenarios' },
   { href: '/experiments/', label: 'Experiments', icon: 'experiments' },
+  { href: '/assistant/', label: 'Assistant', icon: 'message' },
   { href: '/settings/', label: 'Settings', icon: 'settings' },
 ];
 const wideScreen = '(min-width: 1000px)';

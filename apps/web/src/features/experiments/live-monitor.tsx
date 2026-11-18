@@ -9,6 +9,7 @@ import { Icon } from '../../components/icon';
 import { StatusBadge } from '../../components/console-ui';
 import { TelemetryChart, type TelemetryPoint } from './telemetry-chart';
 import { ExperimentRecords } from './experiment-records';
+import { SavedRunResult } from './saved-run-result';
 import styles from '../../components/console-ui.module.css';
 
 type Run = { id: string; status: string; revision: number; targetId: string; snapshotId: string; attemptId: string; shardId: string; workerName: string; workerUid: string | null; workerState: string | null; verdict: string; deadlineAt: string; operations: { id: string; kind: string; status: string }[] };
@@ -21,9 +22,11 @@ const number = (value: number | null | undefined, unit = '') => value == null ||
 const fresh = (at: string | null, age: number) => at !== null && Number.isFinite(Date.parse(at)) && Date.now() - Date.parse(at) <= age && Date.parse(at) <= Date.now() + 5000;
 
 export function LiveMonitor() {
-  const [panel, setPanel] = useState<'metrics' | 'evidence' | 'stop'>('metrics');
   const query = useSearchParams();
+  const evidenceLink = query.get('panel') === 'evidence';
+  const [selection, setSelection] = useState<{ runId: string; evidenceLink: boolean; panel: 'metrics' | 'evidence' | 'stop' }>();
   const runId = query.get('run') ?? '';
+  const panel = selection?.runId === runId && selection.evidenceLink === evidenceLink ? selection.panel : evidenceLink ? 'evidence' : 'metrics';
   const [run, setRun] = useState<Run>();
   const [metrics, setMetrics] = useState<Metric>();
   const [httpPoints, setHttpPoints] = useState<TelemetryPoint[]>([]);
@@ -85,7 +88,7 @@ export function LiveMonitor() {
   </>;
   return <>
     <div className={styles.monitorToolbar}>
-      {run && <div className={styles.actions} role="group" aria-label="Run sections">{(['metrics', 'evidence', 'stop'] as const).map(value => <Button key={value} variant="secondary" aria-pressed={panel === value} onClick={() => setPanel(value)}>{value === 'metrics' ? 'Metrics' : value === 'evidence' ? 'Evidence' : 'Stop run'}</Button>)}</div>}
+      {run && <div className={styles.actions} role="group" aria-label="Run sections">{(['metrics', 'evidence', 'stop'] as const).map(value => <Button key={value} variant="secondary" aria-pressed={panel === value} onClick={() => setSelection({ runId, evidenceLink, panel: value })}>{value === 'metrics' ? 'Metrics' : value === 'evidence' ? 'Evidence' : 'Stop run'}</Button>)}</div>}
       <div className={styles.actions}>
         <span role="status"><StatusBadge tone={run?.status === 'RUNNING' ? 'info' : run && ['FAILED', 'RECOVERY_REQUIRED'].includes(run.status) ? 'danger' : 'neutral'}>{run?.status ?? 'Awaiting run status'}</StatusBadge></span>
         <Button variant="secondary" disabled={loading} onClick={() => setRetry(value => value + 1)}><Icon name="refresh" width={13} height={13} />Reload</Button>
@@ -102,6 +105,7 @@ export function LiveMonitor() {
         </div>
       </div>
       <div hidden={panel !== 'evidence'}>
+        {panel === 'evidence' && run.id === runId && <SavedRunResult key={`${runId}-${run.revision}-${retry}`} runId={runId} />}
         <section className={styles.panel}>
           <div className={styles.panelHead}><h2>Run evidence</h2><Link href={`/experiments/review/?snapshot=${encodeURIComponent(run.snapshotId)}`}>Open saved inputs</Link></div>
           <div className={styles.body}><dl className={styles.meta}><dt>Worker</dt><dd>{run.workerName} · {run.workerState ?? 'Not observed'}</dd><dt>HTTP source</dt><dd>{metrics?.http.source ?? 'Unavailable'}</dd><dt>Window (UTC)</dt><dd>{metrics?.http.windowFrom && metrics.http.windowUntil ? `${metrics.http.windowFrom} → ${metrics.http.windowUntil}` : 'Unavailable'}</dd><dt>CPU source</dt><dd>{metrics?.resources.source ?? 'Unavailable'}</dd><dt>SLO verdict</dt><dd>{run.verdict}</dd><dt>Restoration</dt><dd>Unverified</dd></dl></div>

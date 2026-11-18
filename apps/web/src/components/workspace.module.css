@@ -15,6 +15,7 @@
 .accountArea { margin-left: auto; display: flex; align-items: center; --ink: var(--guide-ink); --muted: var(--guide-ink); --line: var(--guide-blue); --line-strong: var(--guide-ink); --primary-soft: var(--guide-peach); --primary-hover: var(--guide-ink); --danger: var(--guide-ink); }
 .content { width: 100%; padding: var(--workspace-padding, 32px) clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .content:focus { outline: none; }
+.content:has(> [data-assistant]) { padding: 0; }
 @media (min-width: 901px) and (min-height: 600px) {
   .workspace:has(.content > [data-script-editor]) { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; }
   .workspace:has(.content > [data-script-editor]) .body { min-height: 0; }

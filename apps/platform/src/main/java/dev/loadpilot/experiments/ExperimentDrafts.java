@@ -33,6 +33,7 @@ public class ExperimentDrafts {
     public static class Problem extends RuntimeException {
         final int status;
         public Problem(int status, String message) { super(message); this.status = status; }
+        public int status() { return status; }
     }
     @Service
     public static class Store {

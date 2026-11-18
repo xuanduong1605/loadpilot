@@ -28,7 +28,7 @@ export function ExperimentWorkspace({ screen = 'history' }: { screen?: Experimen
     {current === 'history' && <><ExperimentRecords kind="RUNS" title="Runs" /><ExperimentRecords kind="DRAFTS" title="Saved drafts" /><ExperimentRecords kind="SNAPSHOTS" title="Finalized inputs" /></>}
     {current === 'monitor' && <LiveMonitor />}
     {current === 'review' && <ExperimentRecords kind="SNAPSHOTS" title="Saved inputs" />}
-    {current === 'setup' && <><ExperimentSettingsForm onFinalized={id => router.push(`/experiments/review/?snapshot=${encodeURIComponent(id)}`)} /><p><Link href="/experiments/planning/">AI goals and optimization tools</Link> · Currently unavailable</p></>}
+    {current === 'setup' && <><ExperimentSettingsForm onFinalized={id => router.push(`/experiments/review/?snapshot=${encodeURIComponent(id)}`)} /><p><Link href="/assistant/?task=EDIT">Get help with experiment settings</Link> · <Link href="/experiments/planning/">Optimization tools</Link></p></>}
     {current === 'assistance' && <><GoalAssistant /><OptimizationPlan /></>}
   </>;
 }

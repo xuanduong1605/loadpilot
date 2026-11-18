@@ -25,6 +25,6 @@ export function ScriptLibrary() {
       {data.items.length ? <ul className={styles.library}>{data.items.map(item => <li key={item.id}><Link href={'/scenarios/editor/?id=' + encodeURIComponent(item.id) + '&version=' + item.latestVersion}><strong>{item.name}</strong><span>Version {item.latestVersion}</span></Link></li>)}</ul> : <section className={styles.quiet}><h2>{offset ? 'No scripts on this page' : 'Write your first k6 script'}</h2><p>{offset ? 'Return to the previous page.' : 'Approve a saved version before using it in an experiment.'}</p></section>}
       <div className={styles.actions}><Button variant="secondary" disabled={!offset} onClick={() => setOffset(value => Math.max(0, value - 12))}>Previous</Button><small>{data.total} saved · Page {Math.floor(offset / 12) + 1}</small><Button variant="secondary" disabled={offset + 12 >= data.total} onClick={() => setOffset(value => value + 12)}>Next</Button></div>
     </>}
-    <p><Link href="/scenarios/assistant/">AI script requirements</Link> · Currently unavailable</p>
+    <p><Link href="/assistant/?task=SCRIPT">Get help with a script</Link></p>
   </>;
 }

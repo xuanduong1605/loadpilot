@@ -19,10 +19,11 @@ public class ConnectionBodyLimit {
                     throws ServletException, IOException {
                 boolean scenario = request.getRequestURI().equals("/api/scenarios") || request.getRequestURI().startsWith("/api/scenarios/");
                 boolean experiment = request.getRequestURI().startsWith("/api/experiments/");
-                if ((!scenario && !experiment && !request.getRequestURI().startsWith("/api/integrations/")) || "GET".equals(request.getMethod())) { chain.doFilter(request,response); return; }
+                boolean assistant = request.getRequestURI().startsWith("/api/assistant/");
+                if ((!scenario && !experiment && !assistant && !request.getRequestURI().startsWith("/api/integrations/")) || "GET".equals(request.getMethod())) { chain.doFilter(request,response); return; }
                 final int requestLimit = scenario ? 524288 : LIMIT;
                 if (request.getContentLengthLong() > requestLimit) {
-                    responses.error(response,413,"REQUEST_TOO_LARGE",scenario ? "Scenario request exceeds the 512 KiB limit." : experiment ? "Experiment request exceeds the 32 KiB limit." : "Connection settings exceed the 32 KiB request limit."); return;
+                    responses.error(response,413,"REQUEST_TOO_LARGE",scenario ? "Scenario request exceeds the 512 KiB limit." : experiment ? "Experiment request exceeds the 32 KiB limit." : assistant ? "Assistant request exceeds the 32 KiB limit." : "Connection settings exceed the 32 KiB request limit."); return;
                 }
                 chain.doFilter(new HttpServletRequestWrapper(request) {
                     private ServletInputStream bounded;
