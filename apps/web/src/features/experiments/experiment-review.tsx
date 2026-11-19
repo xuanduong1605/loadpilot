@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ApiError, api, mutate } from '../../lib/api';
 import { Button, Notice } from '../../components/form-controls';
@@ -25,6 +26,95 @@ type Inputs = {
 };
 type Preview = { inputs: Inputs; sha256: string };
 type Snapshot = Preview & { id: string; createdBy: string; createdAt: string; runtimeCheckRequired: boolean; executionAvailable: boolean };
+type StartReadiness = { gate: 'READY' | 'MONITOR_DISABLED' | 'RUNTIME_ADMISSION_UNCONFIGURED'; message: string; existingRunId: string | null };
+type StartResponse = { id: string; snapshotId: string; requestKey: string };
+
+function startRequestKey(snapshot: Snapshot) {
+  const storageKey = `loadpilot:start:${snapshot.id}:${snapshot.sha256}`;
+  // getRandomValues also works on the existing HTTP deployment.
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  const generated = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(stored)) return stored;
+    localStorage.setItem(storageKey, generated);
+  } catch { /* This page can still retry with its in-memory key. */ }
+  return generated;
+}
+
+function StartExperiment({ snapshot }: { snapshot: Snapshot }) {
+  const router = useRouter();
+  const [readiness, setReadiness] = useState<StartReadiness>();
+  const [checkError, setCheckError] = useState<ApiError | Error>();
+  const [retry, setRetry] = useState(0);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState('');
+  const requestKey = useRef<string>(undefined);
+  const pending = useRef(false);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({ snapshotId: snapshot.id });
+    void api<StartReadiness>(`/api/experiments/runs/start-readiness?${params}`, { signal: controller.signal })
+      .then(value => { if (!controller.signal.aborted) setReadiness(value); })
+      .catch(reason => { if (!controller.signal.aborted) setCheckError(reason); });
+    return () => controller.abort();
+  }, [snapshot.id, retry]);
+
+  function recheck() {
+    setReadiness(undefined); setCheckError(undefined); setRetry(value => value + 1);
+  }
+
+  async function start() {
+    if (!acknowledged || readiness?.gate !== 'READY' || readiness.existingRunId || pending.current) return;
+    pending.current = true;
+    setStarting(true); setError('');
+    try {
+      requestKey.current ??= startRequestKey(snapshot);
+      const run = await mutate<StartResponse>('/api/experiments/runs', 'POST', {
+        snapshotId: snapshot.id, snapshotHash: snapshot.sha256, requestKey: requestKey.current, acknowledged,
+      });
+      if (!mounted.current) return;
+      if (!run.id || run.snapshotId !== snapshot.id || run.requestKey !== requestKey.current) {
+        throw new Error('The platform could not confirm which run was queued. Retry this start request.');
+      }
+      setReadiness({ ...readiness, existingRunId: run.id });
+      router.push(`/experiments/monitor/?run=${encodeURIComponent(run.id)}`);
+    } catch (reason) {
+      if (!mounted.current) return;
+      setError(reason instanceof Error ? reason.message : 'The platform could not confirm the start. Retry this start request.');
+      if (reason instanceof ApiError && (reason.status === 409 || reason.code === 'EXECUTION_UNAVAILABLE')) recheck();
+    } finally { pending.current = false; setStarting(false); }
+  }
+
+  const needsReview = checkError instanceof ApiError && [400, 409].includes(checkError.status);
+  const startReady = readiness?.gate === 'READY' && !readiness.existingRunId;
+  return <section className={`${summary.section} ${summary.stack}`} aria-labelledby="start-experiment-title">
+    <div className={summary.sectionHead}><h3 id="start-experiment-title">Start experiment</h3></div>
+    {!readiness && !checkError && <p role="status">Checking whether this snapshot can start…</p>}
+    {checkError && <Notice title={needsReview ? 'Fresh input review required' : 'Cannot check execution readiness'} tone="error">{checkError.message}{needsReview && ' Save the draft again, then review and finalize its new revision.'}</Notice>}
+    {needsReview && <div><Link className={guide.secondary} href={`/experiments/new/?draft=${encodeURIComponent(snapshot.inputs.draftId)}`}>Review a new draft revision</Link></div>}
+    {readiness?.existingRunId && <div><Link className={guide.button} href={`/experiments/monitor/?run=${encodeURIComponent(readiness.existingRunId)}`}>Open run</Link></div>}
+    {readiness && !readiness.existingRunId && !startReady && <Notice title={readiness.gate === 'MONITOR_DISABLED' ? 'Execution monitoring is disabled' : 'Runtime admission is unavailable'}>{readiness.message}</Notice>}
+    {((checkError && !needsReview) || (readiness && !startReady && !readiness.existingRunId)) && <div><Button variant="secondary" onClick={recheck}>Check again</Button></div>}
+    {startReady && <>
+      <p>Starting queues these inputs for runtime admission. The worker can launch after the checks pass.</p>
+      {error && <Notice title="Start request could not be confirmed" tone="error">{error}</Notice>}
+      <label className={summary.acknowledge}><input type="checkbox" checked={acknowledged} disabled={starting} onChange={event => setAcknowledged(event.target.checked)} /> I approve running this exact target, script and effective settings.</label>
+      <div className={summary.actions}><Button busy={starting} disabled={!acknowledged} onClick={() => void start()}>{starting ? 'Queuing start…' : error ? 'Retry start' : 'Start experiment'}</Button></div>
+    </>}
+  </section>;
+}
 
 function InputDetails({ inputs, sha256 }: Preview) {
   const { target, scenario, settings, sloPolicy, executionBounds, loadProfile } = inputs;
@@ -158,7 +248,7 @@ export function SavedExperimentInputs({ id }: { id: string }) {
       <div className={summary.sectionHead}><h2 id="finalized-inputs-title">Finalized experiment inputs</h2>{snapshot && <StatusBadge tone="success">Finalized</StatusBadge>}</div>
       {!snapshot && !error && <p role="status">Loading input snapshot…</p>}
       {error && <><Notice title="Cannot load snapshot" tone="error">{error}</Notice><div><Button onClick={() => setRetry(value => value + 1)}>Try again</Button></div></>}
-      {snapshot && <InputDetails {...snapshot} />}
+      {snapshot?.id === id && <><InputDetails {...snapshot} /><StartExperiment key={`${snapshot.id}:${snapshot.sha256}`} snapshot={snapshot} /></>}
     </section>
   </>;
 }

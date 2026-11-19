@@ -57,8 +57,7 @@ public class RunIntents {
         var input = snapshot.inputs();
         input.requireCurrentSingleRun();
         db.queryForObject("SELECT id FROM registered_target WHERE id=? FOR UPDATE", UUID.class, input.target().id());
-        var existing = db.queryForList("SELECT id FROM experiment_run WHERE snapshot_id=?", UUID.class, snapshot.id());
-        if (!existing.isEmpty()) throw new ExperimentDrafts.Problem(409, "This snapshot already has a run. Retry its original start key or review a new draft revision.");
+        if (runForSnapshot(snapshot.id()) != null) throw new ExperimentDrafts.Problem(409, "This snapshot already has a run. Retry its original start key or review a new draft revision.");
         verifyScope(input);
         boolean targetOccupied=Boolean.TRUE.equals(db.queryForObject("""
             SELECT EXISTS (SELECT 1 FROM experiment_run r WHERE r.target_id=?
@@ -73,6 +72,18 @@ public class RunIntents {
         db.update("INSERT INTO experiment_operation(id,attempt_id,kind,status) VALUES (?,?,'SUBMIT','PENDING')", UUID.randomUUID(),attempt);
         audit(actor,"RUN_RESERVED",id);
         return get(id);
+    }
+    private UUID runForSnapshot(UUID snapshotId) {
+        return db.queryForList("SELECT id FROM experiment_run WHERE snapshot_id=?", UUID.class, snapshotId).stream().findFirst().orElse(null);
+    }
+    /** Readiness can reopen historical runs. New starts still recheck scope under the reservation lock. */
+    @Transactional public UUID checkStartInputs(UUID snapshotId) {
+        var snapshot = snapshots.get(snapshotId);
+        var existing = runForSnapshot(snapshotId);
+        if (existing != null) return existing;
+        snapshot.inputs().requireCurrentSingleRun();
+        verifyScope(snapshot.inputs());
+        return null;
     }
     private void verifyScope(ExperimentSnapshots.Inputs input) {
         var target = targets.forReview(input.target().id());

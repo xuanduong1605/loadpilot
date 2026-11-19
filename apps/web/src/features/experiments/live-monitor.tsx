@@ -13,6 +13,8 @@ import { SavedRunResult } from './saved-run-result';
 import styles from '../../components/console-ui.module.css';
 
 type Run = { id: string; status: string; revision: number; targetId: string; snapshotId: string; attemptId: string; shardId: string; workerName: string; workerUid: string | null; workerState: string | null; verdict: string; deadlineAt: string; operations: { id: string; kind: string; status: string }[] };
+type Monitoring = { enabled: boolean; monitor: { runId: string; outcome: string; finished: boolean; cleanupVerified: boolean } };
+type StartWorkflow = { runId: string; reason: string };
 type Metric = { runId: string; runRevision: number; status: string; verdict: string; pollAfterSeconds: number; requestedLoadUnit: string; requestedMeasurementRate: number | null;
   resources: { state: string; message: string; collectedAt: string; oldestSampleAt: string | null; newestSampleAt: string | null; cpuMillicores: number | null; memoryBytes: number | null; source: string; namespace: string; deployment: string; container: string; pods: { cpuRequestMillicores: number | null }[] };
   http: { state: string; message: string; requestsPerSecond: number | null; p95LatencyMs: number | null; errorRatio: number | null; collectedAt: string; windowFrom: string | null; windowUntil: string | null; source: string; coverage: string; identity: { runId: string; attemptId: string; shardId: string; jobUid: string } | null } };
@@ -29,6 +31,8 @@ export function LiveMonitor() {
   const panel = selection?.runId === runId && selection.evidenceLink === evidenceLink ? selection.panel : evidenceLink ? 'evidence' : 'metrics';
   const [run, setRun] = useState<Run>();
   const [metrics, setMetrics] = useState<Metric>();
+  const [monitoring, setMonitoring] = useState<Monitoring>();
+  const [startReason, setStartReason] = useState<string>();
   const [httpPoints, setHttpPoints] = useState<TelemetryPoint[]>([]);
   const [cpuPoints, setCpuPoints] = useState<TelemetryPoint[]>([]);
   const [error, setError] = useState('');
@@ -39,7 +43,7 @@ export function LiveMonitor() {
   const [stopError, setStopError] = useState('');
   const [now, setNow] = useState(0);
   const currentId = useRef(runId); currentId.current = runId;
-  useEffect(() => { setRun(undefined); setMetrics(undefined); setHttpPoints([]); setCpuPoints([]); setError(''); setConfirmStop(false); setStopError(''); setStopping(false); }, [runId]);
+  useEffect(() => { setRun(undefined); setMetrics(undefined); setMonitoring(undefined); setStartReason(undefined); setHttpPoints([]); setCpuPoints([]); setError(''); setConfirmStop(false); setStopError(''); setStopping(false); }, [runId]);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 5000); return () => window.clearInterval(timer); }, []);
   useEffect(() => {
     if (!runId || !uuid.test(runId)) return;
@@ -50,10 +54,28 @@ export function LiveMonitor() {
       let delay = 5000;
       try {
         const current = await api<Run>(`/api/experiments/runs/${runId}`, { signal: controller.signal });
-        const observed = await api<Metric>(`/api/experiments/runs/${runId}/metrics`, { signal: controller.signal });
         if (!active) return;
-        if (current.id !== runId || observed.runId !== runId || observed.runRevision !== current.revision || observed.status !== current.status) throw new Error('The run changed while loading. These metrics cannot be attributed to its current state. Reload to try again.');
-        setRun(current); setMetrics(observed); setError(''); setNow(Date.now());
+        if (current.id !== runId) throw new Error('The platform returned a different run.');
+        setRun(current);
+        const path = `/api/experiments/runs/${runId}`;
+        const options = { signal: controller.signal };
+        const [metricResult, monitorResult, workflowResult] = await Promise.allSettled([
+          api<Metric>(`${path}/metrics`, options),
+          api<Monitoring>(`${path}/monitor`, options),
+          !current.workerUid ? api<StartWorkflow>(`${path}/start-workflow`, options) : undefined,
+        ]);
+        if (!active) return;
+        const monitor = monitorResult.status === 'fulfilled' && monitorResult.value?.monitor?.runId === runId ? monitorResult.value : undefined;
+        setMonitoring(monitor);
+        setStartReason(workflowResult.status === 'fulfilled' && workflowResult.value?.runId === runId ? workflowResult.value.reason : undefined);
+        if (terminal(current.status) && monitor && (!monitor.enabled || monitor.monitor.finished)) delay = 0;
+        if (metricResult.status === 'rejected') throw metricResult.reason;
+        const observed = metricResult.value;
+        if (observed.runId !== runId || observed.runRevision !== current.revision || observed.status !== current.status) {
+          delay = 5000;
+          throw new Error('The run changed while loading. Metrics will refresh on the next check.');
+        }
+        setMetrics(observed); setError(''); setNow(Date.now());
         const http = observed.http;
         const httpValid = http.state === 'READY' && http.identity?.runId === current.id && http.identity.attemptId === current.attemptId && http.identity.shardId === current.shardId && http.identity.jobUid === current.workerUid && fresh(http.collectedAt, 30000);
         const resource = observed.resources;
@@ -64,8 +86,7 @@ export function LiveMonitor() {
         const append = (previous: TelemetryPoint[], point: TelemetryPoint) => previous.length && Date.parse(previous[previous.length - 1].at) >= Date.parse(point.at) ? previous : [...previous.slice(-59), point];
         if (fresh(http.collectedAt, 30000)) setHttpPoints(previous => append(previous, { at: http.collectedAt, requested: httpValid ? nonnegative(requestedRps) : null, actual: httpValid ? nonnegative(http.requestsPerSecond) : null }));
         if (fresh(resource.collectedAt, 30000)) setCpuPoints(previous => append(previous, { at: resource.collectedAt, requested: allocation, actual: cpuValid ? nonnegative(resource.cpuMillicores) : null }));
-        if (terminal(current.status) || observed.pollAfterSeconds === 0) delay = 0;
-        else delay = Math.max(5, Math.min(60, observed.pollAfterSeconds || 5)) * 1000;
+        if (delay) delay = Math.max(5, Math.min(60, observed.pollAfterSeconds || 5)) * 1000;
       } catch (reason) { if (active) { setError(reason instanceof Error ? reason.message : 'Cannot load run.'); setMetrics(undefined); } }
       finally { if (active) { setLoading(false); if (delay) timer = setTimeout(load, delay); } }
     }
@@ -96,6 +117,12 @@ export function LiveMonitor() {
     </div>
     {error && <Notice title="Cannot update run" tone="error">{error}</Notice>}
     {run && <>
+      {startReason === 'START_REJECTED' && <Notice title="Worker start was rejected" tone="error">Ask the deployment operator to check the run ID in the service journal for the failed preflight or admission step. After it is resolved, save and finalize a fresh draft revision to try again.</Notice>}
+      {startReason === 'RECONCILIATION_REQUIRED' && <Notice title="Worker recovery is pending" tone="error">The platform is checking whether resources were created. Keep this run open to follow recovery before trying again.</Notice>}
+      {monitoring?.enabled === false && !monitoring.monitor.finished && <Notice title="Background execution monitoring is disabled">Ask the deployment operator to restore monitoring so the platform can observe the worker and verify cleanup.</Notice>}
+      {monitoring?.enabled && monitoring.monitor.outcome === 'UNAVAILABLE' && <Notice title="Worker monitoring or cleanup is unavailable">The platform will retry. Ask the deployment operator to check the worker connection if this persists.</Notice>}
+      {monitoring?.enabled && terminal(run.status) && !monitoring.monitor.finished && monitoring.monitor.outcome !== 'UNAVAILABLE' && <p role="status">Waiting for result collection and cleanup verification…</p>}
+      {monitoring?.monitor.finished && monitoring.monitor.cleanupVerified && <p role="status">Worker resource cleanup verified.</p>}
       <div hidden={panel !== 'metrics'}>
         {stale && <Notice title="HTTP observations are stale">A current measurement is unavailable.</Notice>}
         <dl className={styles.summary}><div><dt>Requested load</dt><dd>{number(metrics?.requestedMeasurementRate)}</dd><small>{metrics?.requestedLoadUnit ?? 'Unit unavailable'}</small></div><div><dt>Achieved HTTP rate</dt><dd>{number(httpReady ? metrics?.http.requestsPerSecond : null)}</dd><small>HTTP requests/s</small></div><div><dt>p95 HTTP duration</dt><dd>{number(httpReady ? metrics?.http.p95LatencyMs : null)}</dd><small>ms</small></div><div><dt>CPU usage</dt><dd>{number(cpuReady ? metrics?.resources.cpuMillicores : null)}</dd><small>millicores · selected container</small></div></dl>
@@ -105,7 +132,7 @@ export function LiveMonitor() {
         </div>
       </div>
       <div hidden={panel !== 'evidence'}>
-        {panel === 'evidence' && run.id === runId && <SavedRunResult key={`${runId}-${run.revision}-${retry}`} runId={runId} />}
+        {panel === 'evidence' && run.id === runId && <SavedRunResult key={`${runId}-${run.revision}-${monitoring?.monitor.outcome}-${retry}`} runId={runId} />}
         <section className={styles.panel}>
           <div className={styles.panelHead}><h2>Run evidence</h2><Link href={`/experiments/review/?snapshot=${encodeURIComponent(run.snapshotId)}`}>Open saved inputs</Link></div>
           <div className={styles.body}><dl className={styles.meta}><dt>Worker</dt><dd>{run.workerName} · {run.workerState ?? 'Not observed'}</dd><dt>HTTP source</dt><dd>{metrics?.http.source ?? 'Unavailable'}</dd><dt>Window (UTC)</dt><dd>{metrics?.http.windowFrom && metrics.http.windowUntil ? `${metrics.http.windowFrom} → ${metrics.http.windowUntil}` : 'Unavailable'}</dd><dt>CPU source</dt><dd>{metrics?.resources.source ?? 'Unavailable'}</dd><dt>SLO verdict</dt><dd>{run.verdict}</dd><dt>Restoration</dt><dd>Unverified</dd></dl></div>

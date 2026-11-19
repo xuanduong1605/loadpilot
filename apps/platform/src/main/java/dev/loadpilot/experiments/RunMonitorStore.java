@@ -12,7 +12,7 @@ public class RunMonitorStore {
     public enum Outcome { WAITING, UNAVAILABLE, RESULT_SAVED, NO_WORKER, CLEANED_NO_RESULT }
     public record Claim(UUID runId, UUID token) {}
     public record View(UUID runId, String stopReason, String outcome, long attempts, boolean finished,
-                       boolean processing, OffsetDateTime checkedAt, OffsetDateTime nextAt) {}
+                       boolean processing, OffsetDateTime checkedAt, OffsetDateTime nextAt, boolean cleanupVerified) {}
     private final JdbcTemplate db;
     private final RunIntents runs;
     public RunMonitorStore(JdbcTemplate db,RunIntents runs) {this.db=db;this.runs=runs;}
@@ -57,9 +57,11 @@ public class RunMonitorStore {
     @Transactional(readOnly=true) public View read(UUID runId) {
         runs.get(runId);
         return db.query("""
-            SELECT r.stop_reason,m.*,COALESCE(m.lease_until>clock_timestamp(),FALSE) processing
+            SELECT r.stop_reason,m.*,COALESCE(m.lease_until>clock_timestamp(),FALSE) processing,
+                (EXISTS (SELECT 1 FROM experiment_resource_recovery c WHERE c.run_id=r.id AND c.absence_verified_at IS NOT NULL)
+                 AND NOT %s) cleanup_verified
             FROM experiment_run r LEFT JOIN experiment_run_monitor m ON m.run_id=r.id WHERE r.id=?
-            """,(row,index)->new View(runId,row.getString("stop_reason"),row.getString("outcome")==null?"NOT_SCHEDULED":row.getString("outcome"),
-                row.getLong("attempts"),row.getBoolean("finished"),row.getBoolean("processing"),row.getObject("checked_at",OffsetDateTime.class),row.getObject("next_at",OffsetDateTime.class)),runId).getFirst();
+            """.formatted(WorkerRecoveryStore.UNVERIFIED_RESOURCES),(row,index)->new View(runId,row.getString("stop_reason"),row.getString("outcome")==null?"NOT_SCHEDULED":row.getString("outcome"),
+                row.getLong("attempts"),row.getBoolean("finished"),row.getBoolean("processing"),row.getObject("checked_at",OffsetDateTime.class),row.getObject("next_at",OffsetDateTime.class),row.getBoolean("cleanup_verified")),runId).getFirst();
     }
 }

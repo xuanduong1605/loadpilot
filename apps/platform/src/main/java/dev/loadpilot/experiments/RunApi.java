@@ -20,7 +20,10 @@ public class RunApi {
         try{return ResponseEntity.accepted().body(starts.request(request,actor.getName()));}
         catch(RunStarts.Unavailable unavailable){
         return ResponseEntity.status(503).body(Map.of("code","EXECUTION_UNAVAILABLE",
-                "message","Starting runs is unavailable until runtime admission and background monitoring are verified."));}
+                "reason",unavailable.gate().name(),"message",unavailable.getMessage()));}
+    }
+    @GetMapping("/start-readiness") public RunStarts.Readiness readiness(@RequestParam UUID snapshotId) {
+        return starts.readiness(snapshotId);
     }
     @GetMapping("/{id}/start-workflow") public StartWorkflows.View workflow(@PathVariable UUID id){return workflows.read(id);}
     @GetMapping("/{id}") public RunIntents.Run get(@PathVariable UUID id) { return runs.get(id); }

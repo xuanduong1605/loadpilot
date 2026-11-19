@@ -70,17 +70,23 @@ class StartFlowIntegrationTest {
   var request=input();
   UUID snapshotId=request.snapshotId();
   String endpoint="/api/experiments/snapshots/"+snapshotId+"/runtime-probe-scope";
+  String readiness="/api/experiments/runs/start-readiness?snapshotId="+snapshotId;
   mvc.perform(get(endpoint)).andExpect(status().isOk())
      .andExpect(jsonPath("$.sourcePlan.sha256").isNotEmpty())
      .andExpect(jsonPath("$.executionAvailable").value(false));
+  mvc.perform(get(readiness)).andExpect(status().isOk()).andExpect(jsonPath("$.gate").value("READY"));
+  clearInvocations(admission);
 
   UUID target=snapshots.get(snapshotId).inputs().target().id();
   db.update("UPDATE registered_target SET revision=revision+1 WHERE id=?",target);
   mvc.perform(get(endpoint)).andExpect(status().isConflict())
      .andExpect(jsonPath("$.message").value("Target changed after review. Review a new snapshot."));
+  mvc.perform(get(readiness)).andExpect(status().isConflict());
+  mvc.perform(post("/api/experiments/runs").with(csrf()).contentType("application/json").content(json.writeValueAsString(request)))
+     .andExpect(status().isConflict());
   assertThat(db.queryForObject("SELECT count(*) FROM experiment_run WHERE snapshot_id=?",Integer.class,snapshotId)).isZero();
   assertThat(server.requests).isEmpty();
-  verifyNoInteractions(admission);
+  verify(admission,never()).verify(any());
  }
  @Test void publicStartDrivesScopedPreparationActivationLiveMetricsAndStopWithoutDuplicateEffects() throws Exception {
   var request=input();
@@ -148,16 +154,30 @@ class StartFlowIntegrationTest {
  }
  @Test void queuedStopAndUnavailableAdmissionCannotCreateWorkers() throws Exception {
   var request=input();when(admission.available()).thenReturn(false);
-  mvc.perform(post("/api/experiments/runs").with(csrf()).contentType("application/json").content(json.writeValueAsString(request))).andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("EXECUTION_UNAVAILABLE"));
+  var disabled=new RunStarts(runs,queue,admission,false);
+  assertThat(disabled.readiness(request.snapshotId()).gate()).isEqualTo(RunStarts.Gate.MONITOR_DISABLED);
+  String readiness="/api/experiments/runs/start-readiness?snapshotId="+request.snapshotId();
+  mvc.perform(get(readiness)).andExpect(status().isOk()).andExpect(jsonPath("$.gate").value("RUNTIME_ADMISSION_UNCONFIGURED"));
+  mvc.perform(post("/api/experiments/runs").with(csrf()).contentType("application/json").content(json.writeValueAsString(request))).andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("EXECUTION_UNAVAILABLE")).andExpect(jsonPath("$.reason").value("RUNTIME_ADMISSION_UNCONFIGURED"));
   assertThat(runs.findRequest(request.requestKey())).isNull();when(admission.available()).thenReturn(true);UUID id=start(request);
   runs.stop(id,"admin");processor.process(id);assertThat(queue.read(id).state()).isEqualTo("HALTED");assertThat(server.requests).isEmpty();verify(admission,never()).verify(any());
+  UUID target=snapshots.get(request.snapshotId()).inputs().target().id();
+  db.update("UPDATE registered_target SET revision=revision+1 WHERE id=?",target);
+  when(admission.available()).thenReturn(false);
+  mvc.perform(get(readiness)).andExpect(status().isOk()).andExpect(jsonPath("$.existingRunId").value(id.toString()));
+  mvc.perform(post("/api/experiments/runs").with(csrf()).contentType("application/json").content(json.writeValueAsString(request)))
+     .andExpect(status().isAccepted()).andExpect(jsonPath("$.id").value(id.toString()));
  }
  @Test void publicStartCompletesIntoDurableResultsReadableAfterWorkerApiCloses() throws Exception {
   UUID id=start(input());server.legacyTemplateTimestamp=true;processor.process(id);
   finishWorker(0,helper.finalMessage(runs.get(id),server.job).put("durationMs",1000).toString());
   monitorQueue.wake(id);assertThat(monitor.process(id)).isTrue();assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.COMPLETED);
   assertCleanup(id);
-  assertThat(monitorQueue.read(id).outcome()).isEqualTo("RESULT_SAVED");server.close();clearInvocations(clients);
+  mvc.perform(get("/api/experiments/runs/"+id+"/monitor")).andExpect(status().isOk())
+     .andExpect(jsonPath("$.monitor.outcome").value("RESULT_SAVED"))
+     .andExpect(jsonPath("$.monitor.finished").value(true))
+     .andExpect(jsonPath("$.monitor.cleanupVerified").value(true));
+  server.close();clearInvocations(clients);
   mvc.perform(get("/api/experiments/runs/"+id+"/result")).andExpect(status().isOk()).andExpect(jsonPath("$.resultState").value("AVAILABLE")).andExpect(jsonPath("$.verdict").value("UNEVALUATED")).andExpect(jsonPath("$.result.evidence.summary.httpRequests").value(100));verifyNoInteractions(clients);
  }
  @Test void workerFailureWithoutSummaryKeepsTerminationEvidenceAndFinishesCleanup() throws Exception {
@@ -183,6 +203,7 @@ class StartFlowIntegrationTest {
   assertThat(runs.get(id).status()).isEqualTo(RunLifecycle.Status.COMPLETED);
   assertThat(server.removed).isEmpty();
   assertThat(monitorQueue.read(id).finished()).isFalse();
+  assertThat(monitorQueue.read(id).cleanupVerified()).isFalse();
   assertThat(jobDeleteReceipts(id)).containsExactly("11:CONFLICT");
   mvc.perform(get("/api/experiments/runs/"+id+"/result")).andExpect(jsonPath("$.resultState").value("AVAILABLE"));
 
