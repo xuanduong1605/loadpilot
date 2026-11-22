@@ -24,7 +24,7 @@ class KubernetesWorkerActivatorTest {
         K6PlanEnvelope.Prepared plan;V1ConfigMap files;V1NetworkPolicy network;V1Job job;volatile int patchStatus=200;volatile boolean deleted,alterAcknowledgement;
         volatile int createStatus=200;volatile boolean fresh,podMissing,podLingersAfterDelete;volatile V1Pod overridePod;V1Pod cachedPod;
         volatile String metricLogOverride;
-        volatile boolean legacyTemplateTimestamp,unknownJobField;
+        volatile boolean legacyTemplateTimestamp,unknownJobField,omittedDefaults;
         volatile int cleanupVersionConflicts,cleanupDeleteError;
         final Set<String> created=ConcurrentHashMap.newKeySet();
         final Set<String> removed=ConcurrentHashMap.newKeySet();
@@ -84,6 +84,13 @@ class KubernetesWorkerActivatorTest {
             var body=(ObjectNode)json.readTree(JSON.serialize(job));
             if(legacyTemplateTimestamp)((ObjectNode)body.at("/spec/template/metadata")).putNull("creationTimestamp");
             if(unknownJobField)((ObjectNode)body.at("/spec/template/spec")).put("foreignUnsafeField",true);
+            if(omittedDefaults){
+                var pod=(ObjectNode)body.at("/spec/template/spec");
+                pod.remove(List.of("hostNetwork","hostPID","hostIPC"));
+                pod.putArray("tolerations");
+                for(var env:pod.at("/containers/0/env"))if("K6_ADDRESS".equals(env.path("name").asText()))((ObjectNode)env).remove("value");
+                if(!body.at("/spec/suspend").asBoolean())((ObjectNode)body.path("spec")).remove("suspend");
+            }
             return body;
         }
         String origin(){return "https://127.0.0.1:"+server.getAddress().getPort();}
@@ -100,6 +107,7 @@ class KubernetesWorkerActivatorTest {
     @Test void inspectsResourcesAndUsesOneConditionalPatchWithoutClaimingWorkerRunning() throws Exception {
         try(var server=new Fixture();var activator=new KubernetesWorkerActivator(server.client(),json)) {
             server.legacyTemplateTimestamp=true;
+            server.omittedDefaults=true;
             server.job.getSpec().completionMode("NonIndexed").manualSelector(false).selector(new V1LabelSelector().matchLabels(Map.of("batch.kubernetes.io/controller-uid","job-uid")));
             server.job.getSpec().getTemplate().getMetadata().getLabels().put("batch.kubernetes.io/job-name",server.job.getMetadata().getName());
             server.job.getSpec().getTemplate().getSpec().schedulerName("default-scheduler").serviceAccount("loadpilot-runner");
@@ -107,19 +115,24 @@ class KubernetesWorkerActivatorTest {
             assertThat(command.patchHash()).isEqualTo(K6PlanEnvelope.hash(command.patchJson()));var patch=json.readTree(command.patchJson());
             assertThat(patch.get(0).path("path").asText()).isEqualTo("/metadata/uid");assertThat(patch.get(1).path("path").asText()).isEqualTo("/metadata/resourceVersion");assertThat(patch.get(2).path("path").asText()).isEqualTo("/spec");
             assertThat(patch.get(2).at("/value/template/metadata/creationTimestamp").isNull()).isTrue();
+            assertThat(patch.get(2).at("/value/template/spec/hostNetwork").isMissingNode()).isTrue();
             assertThat(activator.activate(command,UUID.randomUUID())).isEqualTo(new KubernetesWorkerActivator.Receipt("job-uid","11"));
             assertThat(server.requests).hasSize(4);assertThat(server.types.getLast()).startsWith("application/json-patch+json");assertThat(server.job.getSpec().getSuspend()).isFalse();
         }
     }
     @Test void resourceOrSecurityDriftRefusesActivationBeforePatch() throws Exception {
-        for(String change:List.of("source","network","ingress","policy-types","image","privilege","uid","already-active","summary-path","summary-policy","pod-deadline","unknown-job-field")) try(var server=new Fixture();var activator=new KubernetesWorkerActivator(server.client(),json)) {
+        for(String change:List.of("source","network","ingress","policy-types","selector-expressions","ip-exclusions","image","privilege","host-network","token-default","uid","already-active","summary-path","summary-policy","pod-deadline","unknown-job-field")) try(var server=new Fixture();var activator=new KubernetesWorkerActivator(server.client(),json)) {
             switch(change) {
                 case "source"->server.files.getData().put("scenario.js","changed");
                 case "network"->server.network.getSpec().setEgress(List.of());
                 case "ingress"->server.network.getSpec().setIngress(List.of(new V1NetworkPolicyIngressRule()));
                 case "policy-types"->server.network.getSpec().setPolicyTypes(List.of("Ingress"));
+                case "selector-expressions"->server.network.getSpec().getPodSelector().matchExpressions(List.of(new V1LabelSelectorRequirement().key("extra").operator("Exists")));
+                case "ip-exclusions"->server.network.getSpec().getEgress().getFirst().getTo().getFirst().getIpBlock().except(List.of("192.0.2.10/32"));
                 case "image"->server.job.getSpec().getTemplate().getSpec().getContainers().getFirst().image("unreviewed.invalid/k6");
                 case "privilege"->server.job.getSpec().getTemplate().getSpec().getContainers().getFirst().getSecurityContext().privileged(true);
+                case "host-network"->server.job.getSpec().getTemplate().getSpec().hostNetwork(true);
+                case "token-default"->server.job.getSpec().getTemplate().getSpec().automountServiceAccountToken(null);
                 case "uid"->server.job.getMetadata().uid("replacement-job");
                 case "already-active"->server.job.getSpec().suspend(false);
                 case "summary-path"->server.job.getSpec().getTemplate().getSpec().getContainers().getFirst().terminationMessagePath("/dev/termination-log");

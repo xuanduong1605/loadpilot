@@ -25,12 +25,22 @@ final class KubernetesNetworkPolicy {
     }
 
     private static ObjectNode omitEmptyRules(ObjectNode spec) {
-        // The API omits empty ingress/egress lists. Selectors, policy types and nonempty rules still match exactly.
+        // Normalize only optional empty lists that Kubernetes omits on readback.
         ObjectNode normalized=spec.deepCopy();
+        omitEmptyList(normalized.path("podSelector"),"matchExpressions");
         for(String field:List.of("ingress","egress")) {
-            JsonNode rules=normalized.path(field);
-            if(rules.isArray() && rules.isEmpty())normalized.remove(field);
+            omitEmptyList(normalized,field);
+            String peers=field.equals("ingress")?"from":"to";
+            for(var rule:normalized.path(field)) for(var peer:rule.path(peers)) {
+                omitEmptyList(peer.path("podSelector"),"matchExpressions");
+                omitEmptyList(peer.path("namespaceSelector"),"matchExpressions");
+                omitEmptyList(peer.path("ipBlock"),"except");
+            }
         }
         return normalized;
+    }
+
+    private static void omitEmptyList(JsonNode parent,String field) {
+        if(parent instanceof ObjectNode object && object.path(field).isArray() && object.path(field).isEmpty())object.remove(field);
     }
 }

@@ -37,6 +37,9 @@ class KubernetesProbeCollectorTest {
             clients=new ExecutionClusterClients(json.writeValueAsString(List.of(Map.of("targetId",target.toString(),"connectionRevision",1,"origin",origin(),"addresses",List.of("127.0.0.1"),"namespace",ns,"operations",operations))),json,store);binding=clients.binding(target,ns);value.set("clusterBinding",json.valueToTree(binding));String text=value.toString();original=new K6PlanEnvelope.Prepared(text,K6PlanEnvelope.hash(text));
             plan=builder.construct(original,UUID.randomUUID(),new RuntimeProbePlan.Node("node-a","node-uid"),new RuntimeProbePlan.Canary("http://probe.invalid:8080","192.0.2.33","/ready","/stall"),"https://fixture.invalid/ready",phase,now);body=builder.verify(original,plan);String name=body.path("job").path("metadata").path("name").asText(),podName=name+"-abc";paths=KubernetesProbeCollector.paths(body,podName);
             scope=new ExecutionClusterClients.Scope(target,1,ns,name,null,ExecutionClusterClients.Access.PROBE_READ);clock=Clock.fixed(phase==RuntimeProbePlan.Phase.CLOCK?now.plusSeconds(2):now.plusSeconds(30),ZoneOffset.UTC);
+            var runtime=json.createObjectNode().put("apiVersion","node.k8s.io/v1").put("kind","RuntimeClass").put("handler","runsc");
+            runtime.putObject("metadata").put("name",body.at("/job/spec/template/spec/runtimeClassName").asText()).put("uid","runtime-uid").put("resourceVersion","1");
+            reads.put(paths.getLast(),runtime.toString());
             for(int i=0;i<3;i++){
                 String field=List.of("files","network","job").get(i);var resource=(ObjectNode)body.path(field).deepCopy();
                 ((ObjectNode)resource.path("metadata")).put("uid",field+"-uid").put("resourceVersion","1");
@@ -75,8 +78,58 @@ class KubernetesProbeCollectorTest {
         for(var phase:RuntimeProbePlan.Phase.values())try(var f=new Fixture(phase,List.of("PROBE_READ"))){
             var capture=f.collector().collect(f.original,f.plan);assertThat(capture.planSha256()).isEqualTo(f.plan.sha256());assertThat(capture.artifactJson()).doesNotContain("private-error","fixture-token","LP_PROBE_CLOCK");
             var value=json.readTree(capture.artifactJson());assertThat(value.path("receipts").path("jobUid").asText()).isEqualTo("job-uid");assertThat(value.path("phase").asText()).isEqualTo(phase.name());assertThat(value.path("observedHashes").size()).isEqualTo(5);
-            assertThat(f.requests).hasSize(phase==RuntimeProbePlan.Phase.CLOCK?11:10).allMatch(request->request.startsWith("GET "));
+            assertThat(f.requests).hasSize(phase==RuntimeProbePlan.Phase.CLOCK?13:12).allMatch(request->request.startsWith("GET "));
         }
+    }
+    @Test void verifiesPodAdmissionAgainstTheExactRuntimeClass() throws Exception {
+        for(String change:List.of("matching","selector","overhead","toleration","pod-revision","wrong-kind","runtime-revision"))
+            try(var f=new Fixture(RuntimeProbePlan.Phase.ALLOWED,List.of("PROBE_READ"))){
+                var runtime=(ObjectNode)json.readTree(f.reads.get(f.paths.getLast()));
+                var scheduling=runtime.putObject("scheduling");scheduling.putObject("nodeSelector").put("sandbox","gvisor");
+                var toleration=scheduling.putArray("tolerations").addObject().put("key","sandbox").put("operator","Equal").put("value","gvisor").put("effect","NoSchedule");
+                var overhead=runtime.putObject("overhead").putObject("podFixed").put("cpu","50m").put("memory","32Mi");
+                f.reads.put(f.paths.getLast(),runtime.toString());
+
+                var pod=(ObjectNode)json.readTree(f.reads.get(f.paths.get(5)));
+                var spec=(ObjectNode)pod.path("spec");spec.remove(List.of("hostNetwork","hostPID","hostIPC"));
+                spec.set("nodeSelector",scheduling.path("nodeSelector").deepCopy());
+                spec.set("overhead",overhead.deepCopy());
+                var tolerations=spec.putArray("tolerations");tolerations.add(toleration.deepCopy());
+                tolerations.addObject().put("key","node.kubernetes.io/not-ready").put("operator","Exists").put("effect","NoExecute").put("tolerationSeconds",300);
+                switch(change){
+                    case "selector"->((ObjectNode)spec.path("nodeSelector")).put("sandbox","foreign");
+                    case "overhead"->((ObjectNode)spec.path("overhead")).put("cpu","500m");
+                    case "toleration"->((ObjectNode)tolerations.get(0)).put("value","foreign");
+                    case "runtime-revision"->f.beforeRead=()->{
+                        String request="GET "+f.paths.getLast();
+                        if(f.requests.getLast().equals(request) && Collections.frequency(f.requests,request)==2){
+                            ((ObjectNode)runtime.path("metadata")).put("resourceVersion","2");f.reads.put(f.paths.getLast(),runtime.toString());
+                        }
+                    };
+                }
+                f.listPod(pod);
+                pod.put("apiVersion","v1").put("kind",change.equals("wrong-kind")?"Service":"Pod");
+                if(change.equals("pod-revision"))((ObjectNode)pod.path("metadata")).put("resourceVersion","2");
+                f.reads.put(f.paths.get(5),pod.toString());
+                if(change.equals("matching"))assertThat(f.collector().collect(f.original,f.plan).planSha256()).isEqualTo(f.plan.sha256());
+                else assertThatThrownBy(()->f.collector().collect(f.original,f.plan)).as(change).isInstanceOf(IllegalStateException.class);
+            }
+    }
+    @Test void deadlineAcceptsZeroBackoffOnlyWithTerminatedDeadlinePodAndElapsedTime() throws Exception {
+        for(String change:List.of("matching","too-early","wrong-pod-reason","retry","unrelated-condition"))
+            try(var f=new Fixture(RuntimeProbePlan.Phase.DEADLINE,List.of("PROBE_READ"))){
+                var job=(ObjectNode)json.readTree(f.reads.get(f.paths.get(2)));
+                ((ObjectNode)job.at("/status/conditions/0")).put("reason",change.equals("unrelated-condition")?"Other":"BackoffLimitExceeded");
+                if(change.equals("retry"))((ObjectNode)job.path("spec")).put("backoffLimit",1);
+                if(change.equals("unrelated-condition"))((ArrayNode)job.at("/status/conditions")).addObject().put("type","Other").put("status","True").put("reason","DeadlineExceeded");
+                f.reads.put(f.paths.get(2),job.toString());
+                var pod=(ObjectNode)json.readTree(f.reads.get(f.paths.get(5)));
+                if(change.equals("too-early"))((ObjectNode)pod.at("/status/containerStatuses/0/state/terminated")).put("finishedAt",now.plusSeconds(2).toString());
+                if(change.equals("wrong-pod-reason"))((ObjectNode)pod.path("status")).put("reason","Evicted");
+                f.listPod(pod);f.reads.put(f.paths.get(5),pod.toString());
+                if(change.equals("matching"))assertThat(f.collector().collect(f.original,f.plan).artifactJson()).contains("DeadlineExceeded");
+                else assertThatThrownBy(()->f.collector().collect(f.original,f.plan)).as(change).isInstanceOf(IllegalStateException.class);
+            }
     }
     @Test void wrongSourceOwnershipNodeRuntimeImageRestartOrPaginationNeverBecomeEvidence() throws Exception {
         for(String mutation:List.of("source","owner","node","image","restart","page","security","unknown-spec","unknown-job-field","second-uid"))try(var f=new Fixture(RuntimeProbePlan.Phase.ALLOWED,List.of("PROBE_READ"))){
@@ -115,6 +168,7 @@ class KubernetesProbeCollectorTest {
         try(var f=new Fixture(RuntimeProbePlan.Phase.ALLOWED,List.of("PROBE_READ"))){
             assertThatThrownBy(()->f.clients.openBound(f.scope,f.binding)).isInstanceOf(ExecutionClusterClients.Problem.class);
             assertThatThrownBy(()->f.clients.openProbeRead(f.scope,f.binding,f.original,f.plan,"/api/v1/secrets",null)).isInstanceOf(ExecutionClusterClients.Problem.class);
+            assertThatThrownBy(()->f.clients.openProbeRead(f.scope,f.binding,f.original,f.plan,"/apis/node.k8s.io/v1/runtimeclasses/other",null)).isInstanceOf(ExecutionClusterClients.Problem.class);
             try(var session=f.clients.openProbeRead(f.scope,f.binding,f.original,f.plan,f.paths.get(0),null)){
                 for(var request:List.of(new Request.Builder().url(f.origin()+f.paths.get(0)).delete().build(),new Request.Builder().url(f.origin()+f.paths.get(0)+"?extra=true").build(),new Request.Builder().url(f.origin()+f.paths.get(1)).build()))
                     assertThatThrownBy(()->session.client().getHttpClient().newCall(request).execute()).isInstanceOf(java.io.IOException.class);
@@ -127,9 +181,9 @@ class KubernetesProbeCollectorTest {
             var archive=new RuntimeProbeArchive(directory,json);var service=new RuntimeProbeEvidenceService(builder,archive,f.collector(),Clock.fixed(now,ZoneOffset.UTC));
             assertThatThrownBy(()->service.capture(f.original,f.plan)).isInstanceOf(IllegalStateException.class);assertThat(f.requests).isEmpty();
             var prepared=service.prepare(f.original,UUID.fromString(f.body.path("probeId").asText()),new RuntimeProbePlan.Node("node-a","node-uid"),new RuntimeProbePlan.Canary("http://probe.invalid:8080","192.0.2.33","/ready","/stall"),"https://fixture.invalid/ready",RuntimeProbePlan.Phase.ALLOWED);
-            assertThat(prepared).isEqualTo(f.plan);assertThat(f.requests).isEmpty();var receipt=service.capture(f.original,prepared);assertThat(f.requests).hasSize(10);assertThat(receipt.artifactJson()).doesNotContain("private-error","fixture-token");
-            f.reads.clear();var restarted=new RuntimeProbeEvidenceService(builder,new RuntimeProbeArchive(directory,json),f.collector(),Clock.fixed(now,ZoneOffset.UTC));assertThat(restarted.capture(f.original,prepared)).isEqualTo(receipt);assertThat(f.requests).hasSize(10);
-            Files.writeString(directory.resolve(prepared.sha256()+".capture.json"),"private-corrupt-receipt");assertThatThrownBy(()->restarted.capture(f.original,prepared)).isInstanceOf(IllegalStateException.class).hasMessageNotContaining("private-corrupt-receipt");assertThat(f.requests).hasSize(10);
+            assertThat(prepared).isEqualTo(f.plan);assertThat(f.requests).isEmpty();var receipt=service.capture(f.original,prepared);assertThat(f.requests).hasSize(12);assertThat(receipt.artifactJson()).doesNotContain("private-error","fixture-token");
+            f.reads.clear();var restarted=new RuntimeProbeEvidenceService(builder,new RuntimeProbeArchive(directory,json),f.collector(),Clock.fixed(now,ZoneOffset.UTC));assertThat(restarted.capture(f.original,prepared)).isEqualTo(receipt);assertThat(f.requests).hasSize(12);
+            Files.writeString(directory.resolve(prepared.sha256()+".capture.json"),"private-corrupt-receipt");assertThatThrownBy(()->restarted.capture(f.original,prepared)).isInstanceOf(IllegalStateException.class).hasMessageNotContaining("private-corrupt-receipt");assertThat(f.requests).hasSize(12);
         }
     }
 }

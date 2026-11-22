@@ -1,6 +1,7 @@
 package dev.loadpilot;
 
 import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.*;
 import dev.loadpilot.integrations.ConnectionStore;
@@ -107,6 +108,8 @@ class SignedRuntimeAdmissionTest {
         for(int index:List.of(1,2,3,5)){
             String path=paths.get(index),name=path.substring(path.lastIndexOf('/')+1);var resource=json.createObjectNode();resource.putObject("metadata").put("name",name).put("uid",index==5?"cni-uid":"uid-"+index).put("generation",1);reads.put(path,resource);
         }
+        var runtime=(ObjectNode)reads.get(paths.get(3));runtime.put("apiVersion","node.k8s.io/v1").put("kind","RuntimeClass").put("handler","runsc");
+        ((ObjectNode)runtime.path("metadata")).put("resourceVersion","1");
         ((ObjectNode)reads.get(paths.get(5))).putObject("status").put("observedGeneration",1).put("numberReady",1).put("numberUnavailable",0);
         reads.put(paths.get(4),json.readTree("{\"metadata\":{},\"items\":[]}"));
         reads.put(paths.get(6),json.readTree("{\"metadata\":{},\"items\":[{\"metadata\":{\"name\":\"cni-agent-abc\",\"uid\":\"cni-pod-uid\",\"ownerReferences\":[{\"uid\":\"cni-uid\",\"kind\":\"DaemonSet\",\"controller\":true}]},\"spec\":{\"nodeName\":\"node-a\"},\"status\":{\"conditions\":[{\"type\":\"Ready\",\"status\":\"True\"}],\"containerStatuses\":[{\"ready\":true,\"imageID\":\"fixture-cni@sha256:bbbb\"}]}}]}"));
@@ -128,7 +131,12 @@ class SignedRuntimeAdmissionTest {
                 case "cni-image"->((ObjectNode)current.get(p.get(6)).path("items").get(0).path("status").path("containerStatuses").get(0)).put("imageID","changed");
                 case "cni-down"->((ObjectNode)current.get(p.get(5)).path("status")).put("numberUnavailable",1);
                 case "policy"->((com.fasterxml.jackson.databind.node.ArrayNode)current.get(p.get(4)).path("items")).add(json.readTree("{\"metadata\":{\"name\":\"allow-all\"},\"spec\":{\"egress\":[{}]}}"));
-                case "own-policy"->((com.fasterxml.jackson.databind.node.ArrayNode)current.get(p.get(4)).path("items")).add(json.readTree(plan.canonicalJson()).path("network"));
+                case "own-policy"->{
+                    var policy=json.readTree(plan.canonicalJson()).path("network");
+                    ((ObjectNode)policy.at("/spec/podSelector")).putArray("matchExpressions");
+                    ((ObjectNode)policy.at("/spec/egress/0/to/0/ipBlock")).putArray("except");
+                    ((ArrayNode)current.get(p.get(4)).path("items")).add(policy);
+                }
             }
             if(Set.of("new-node","page","unready","cni-down","policy").contains(mutation))assertThatThrownBy(()->digest(plan,current)).as(mutation).isInstanceOf(IllegalStateException.class);
             else if(mutation.equals("own-policy"))assertThat(digest(plan,current)).isEqualTo(initial);

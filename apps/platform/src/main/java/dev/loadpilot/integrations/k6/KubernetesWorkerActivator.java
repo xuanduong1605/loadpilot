@@ -104,7 +104,7 @@ public final class KubernetesWorkerActivator implements AutoCloseable {
     }
     static void verifySavedJob(V1Job expected,V1Job actual,JsonNode actualSpec,String jobUid,boolean suspended,ObjectMapper json) throws Exception {
         if(actual==null || actual.getSpec()==null || !metadata(expected.getMetadata(),actual.getMetadata(),jobUid) || actual.getMetadata().getResourceVersion()==null || actual.getMetadata().getResourceVersion().isBlank()
-                || !Objects.equals(actual.getSpec().getSuspend(),suspended)) throw conflict();
+                || Boolean.TRUE.equals(actual.getSpec().getSuspend())!=suspended) throw conflict();
         verifySpec(expected,actualSpec,jobUid,suspended,json);
     }
     private static void verifySpec(V1Job expected,JsonNode actualSpec,String jobUid,boolean suspended,ObjectMapper json) throws Exception {
@@ -119,18 +119,35 @@ public final class KubernetesWorkerActivator implements AutoCloseable {
         if(selector.isObject() && selector.properties().stream().allMatch(e->Set.of("matchLabels","matchExpressions").contains(e.getKey()))
                 && (!selector.hasNonNull("matchExpressions") || (selector.path("matchExpressions").isArray() && selector.path("matchExpressions").isEmpty())) && selector.path("matchLabels").isObject() && !selector.path("matchLabels").isEmpty()
                 && selector.path("matchLabels").properties().stream().allMatch(e->Set.of("controller-uid","batch.kubernetes.io/controller-uid").contains(e.getKey()) && uid.equals(e.getValue().asText()))) spec.remove("selector");
-        removeDefault(spec,"manualSelector",false,json);removeDefault(spec,"completionMode","NonIndexed",json);removeDefault(spec,"managedBy","kubernetes.io/job-controller",json);
+        removeDefault(spec,"suspend",false,json);removeDefault(spec,"manualSelector",false,json);removeDefault(spec,"completionMode","NonIndexed",json);removeDefault(spec,"managedBy","kubernetes.io/job-controller",json);
         var templateMetadata=spec.path("template").path("metadata");
         if(templateMetadata instanceof ObjectNode values && values.path("creationTimestamp").isNull())values.remove("creationTimestamp");
         var labels=templateMetadata.path("labels");
         if(labels instanceof ObjectNode values) for(String key:List.of("controller-uid","batch.kubernetes.io/controller-uid","job-name","batch.kubernetes.io/job-name")) {
             String expected=key.endsWith("job-name")?name:uid;if(expected.equals(values.path(key).asText())) values.remove(key);
         }
-        var pod=spec.path("template").path("spec");
-        if(pod instanceof ObjectNode values) {
-            removeDefault(values,"schedulerName","default-scheduler",json);removeDefault(values,"serviceAccount",values.path("serviceAccountName").asText(),json);removeDefault(values,"priority",0,json);removeDefault(values,"preemptionPolicy","PreemptLowerPriority",json);
-            for(var container:values.path("containers")) if(container instanceof ObjectNode value) {removeDefault(value,"terminationMessagePath","/dev/termination-log",json);removeDefault(value,"terminationMessagePolicy","File",json);}
+        if(spec.path("template").path("spec") instanceof ObjectNode pod) normalizePodDefaults(pod,json);
+    }
+    static void verifyPodSpec(JsonNode expected,ObjectNode actual,ObjectMapper json) {
+        if(!(expected.deepCopy() instanceof ObjectNode wanted))throw conflict();
+        var observed=actual.deepCopy();
+        normalizePodDefaults(wanted,json);normalizePodDefaults(observed,json);
+        if(!wanted.equals(observed))throw conflict();
+    }
+    private static void normalizePodDefaults(ObjectNode pod,ObjectMapper json) {
+        removeDefault(pod,"schedulerName","default-scheduler",json);removeDefault(pod,"serviceAccount",pod.path("serviceAccountName").asText(),json);removeDefault(pod,"priority",0,json);removeDefault(pod,"preemptionPolicy","PreemptLowerPriority",json);
+        for(String field:List.of("hostNetwork","hostPID","hostIPC"))removeDefault(pod,field,false,json);
+        for(String field:List.of("hostAliases","initContainers","ephemeralContainers","imagePullSecrets","tolerations","resourceClaims","schedulingGates","topologySpreadConstraints","readinessGates"))omitEmpty(pod,field,true);
+        for(String field:List.of("nodeSelector","overhead"))omitEmpty(pod,field,false);
+        for(var container:pod.path("containers")) if(container instanceof ObjectNode value) {
+            removeDefault(value,"terminationMessagePath","/dev/termination-log",json);removeDefault(value,"terminationMessagePolicy","File",json);
+            for(String field:List.of("env","envFrom","ports","volumeDevices"))omitEmpty(value,field,true);
+            for(var env:value.path("env"))if(env instanceof ObjectNode variable && !variable.hasNonNull("valueFrom"))removeDefault(variable,"value","",json);
         }
+    }
+    private static void omitEmpty(ObjectNode node,String field,boolean array) {
+        var value=node.path(field);
+        if((array?value.isArray():value.isObject()) && value.isEmpty())node.remove(field);
     }
     private static void removeDefault(ObjectNode node,String field,Object value,ObjectMapper json) {if(json.valueToTree(value).equals(node.get(field))) node.remove(field);}
     private static boolean metadata(V1ObjectMeta expected,V1ObjectMeta actual,String uid) {

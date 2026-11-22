@@ -50,7 +50,7 @@ class RuntimeProbeIssuerTest {
             }
             server.reads.put(paths.get(5),pod);deployed.put(paths.get(5),pod.deepCopy());var listing=json.createObjectNode();listing.putObject("metadata");listing.putArray("items").add(pod);server.reads.put(podList(),listing);
         }
-        void cleanup(RuntimeProbePlan.Prepared prepared) throws Exception{var body=json.readTree(prepared.canonicalJson());String name=body.path("job").path("metadata").path("name").asText();for(String path:KubernetesProbeCollector.paths(body,name+"-abc")){if(!path.equals("/api/v1/nodes/node-a") && !path.equals(podList())){server.reads.remove(path);server.raw.remove(path);}}emptyPods();}
+        void cleanup(RuntimeProbePlan.Prepared prepared) throws Exception{var body=json.readTree(prepared.canonicalJson());String name=body.path("job").path("metadata").path("name").asText();var paths=KubernetesProbeCollector.paths(body,name+"-abc");for(int index:List.of(0,1,2,5,6)){server.reads.remove(paths.get(index));server.raw.remove(paths.get(index));}emptyPods();}
         void stage(RuntimeProbePlan.Phase phase,int second) throws Exception{var prepared=prepare(phase,second);deploy(prepared);issuer.capture(original,id,prepared);cleanup(prepared);}
         void complete(boolean badOrder) throws Exception{
             stage(RuntimeProbePlan.Phase.BASELINE_BEFORE,1);stage(RuntimeProbePlan.Phase.ALLOWED,3);

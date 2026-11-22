@@ -72,7 +72,7 @@ public final class KubernetesRuntimeState {
             List<Object> policies=new ArrayList<>();
             for(var policy:items(reads.get(paths.get(4)),32)){
                 if(policy.path("metadata").path("name").equals(plan.path("network").path("metadata").path("name"))){
-                    if(!policy.path("spec").equals(plan.path("network").path("spec")))throw SignedRuntimeEvidence.denied();
+                    if(!KubernetesNetworkPolicy.matches(plan.path("network").path("spec"),policy.path("spec")))throw SignedRuntimeEvidence.denied();
                     for(var entry:plan.path("network").path("metadata").path("labels").properties())if(!entry.getValue().equals(policy.path("metadata").path("labels").path(entry.getKey())))throw SignedRuntimeEvidence.denied();
                 }else {
                     // Egress rules are additive. Per-run trace values must not evade a probe through another policy.

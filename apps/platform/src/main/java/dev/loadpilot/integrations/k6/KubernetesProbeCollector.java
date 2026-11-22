@@ -39,7 +39,14 @@ public final class KubernetesProbeCollector {
         if(!SignedRuntimeEvidence.name(ns) || !SignedRuntimeEvidence.name(name) || !SignedRuntimeEvidence.name(node))throw denied();
         List<String> paths=new ArrayList<>(List.of("/api/v1/namespaces/"+ns+"/configmaps/"+name,"/apis/networking.k8s.io/v1/namespaces/"+ns+"/networkpolicies/"+name,
                 "/apis/batch/v1/namespaces/"+ns+"/jobs/"+name,"/api/v1/nodes/"+node,"/api/v1/namespaces/"+ns+"/pods?limit=17"));
-        if(podName!=null){if(!SignedRuntimeEvidence.name(podName) || !podName.startsWith(name+"-"))throw denied();String path="/api/v1/namespaces/"+ns+"/pods/"+podName;paths.add(path);paths.add(path+"/log?container=k6&follow=false&previous=false&timestamps=true&sinceSeconds=2&limitBytes=8192");}return List.copyOf(paths);
+        if(podName!=null){if(!SignedRuntimeEvidence.name(podName) || !podName.startsWith(name+"-"))throw denied();String path="/api/v1/namespaces/"+ns+"/pods/"+podName;paths.add(path);paths.add(path+"/log?container=k6&follow=false&previous=false&timestamps=true&sinceSeconds=2&limitBytes=8192");}
+        paths.add(runtimeClassPath(probe));
+        return List.copyOf(paths);
+    }
+    private static String runtimeClassPath(JsonNode probe) {
+        String name=probe.at("/job/spec/template/spec/runtimeClassName").asText();
+        if(!SignedRuntimeEvidence.name(name))throw denied();
+        return "/apis/node.k8s.io/v1/runtimeclasses/"+name;
     }
     public Capture collect(K6PlanEnvelope.Prepared original,RuntimeProbePlan.Prepared prepared){
         try {
@@ -60,7 +67,10 @@ public final class KubernetesProbeCollector {
                 if(!pod.path("metadata").isObject() || !SignedRuntimeEvidence.uid(pod.path("metadata").path("uid").asText()) || !SignedRuntimeEvidence.name(pod.path("metadata").path("name").asText()))throw denied();
                 if(relevant(probe,pod,jobUid))selected.add(pod);
             }
-            if(selected.size()!=1)throw denied();var pod=selected.getFirst();var status=pod(probe,pod,expected,jobUid);String podName=pod.path("metadata").path("name").asText();
+            if(selected.size()!=1)throw denied();
+            String runtimePath=runtimeClassPath(probe);
+            var runtimeClass=get(scope,binding,original,prepared,runtimePath,null);
+            var pod=selected.getFirst();var status=pod(probe,pod,expected,jobUid,runtimeClass);String podName=pod.path("metadata").path("name").asText();
             var phase=RuntimeProbePlan.Phase.valueOf(probe.path("phase").asText());Instant before=null,after=null;Long epoch=null;Summary summary=null;
             Instant podStarted=Instant.parse(pod.path("status").path("startTime").asText());if(podStarted.isBefore(Instant.parse(probe.path("createdAt").asText())) || podStarted.isAfter(clock.instant()))throw denied();
             if(phase==RuntimeProbePlan.Phase.CLOCK){
@@ -75,7 +85,7 @@ public final class KubernetesProbeCollector {
                 long duration=Duration.between(podStarted,end).toMillis();if(start.isBefore(podStarted) || end.isBefore(start) || duration<0 || end.isAfter(clock.instant().plusSeconds(1)) || duration>expected.getSpec().getActiveDeadlineSeconds()*1000L)throw denied();
                 boolean failed=conditions(job,"Failed"),complete=conditions(job,"Complete");
                 if(phase==RuntimeProbePlan.Phase.DEADLINE){
-                    if(!failed || complete || !"DeadlineExceeded".equals(pod.path("status").path("reason").asText()) || !job.path("status").path("conditions").findValuesAsText("reason").contains("DeadlineExceeded")
+                     if(!failed || complete || !"Failed".equals(pod.at("/status/phase").asText()) || !"DeadlineExceeded".equals(pod.at("/status/reason").asText()) || !deadlineFailure(job)
                             || duration<expected.getSpec().getTemplate().getSpec().getActiveDeadlineSeconds()*1000L)throw denied();
                 }else if(phase==RuntimeProbePlan.Phase.LATE_GUARD || phase==RuntimeProbePlan.Phase.EXPIRED_GUARD){
                     if(exit!=108 || !failed || complete || "DeadlineExceeded".equals(pod.path("status").path("reason").asText()))throw denied();
@@ -84,7 +94,8 @@ public final class KubernetesProbeCollector {
                     String message=terminated.path("message").asText();if(message.getBytes(StandardCharsets.UTF_8).length>3072)throw denied();summary=json.readValue(message,Summary.class);summary(probe,summary);
                 }
             }
-            var finalPod=get(scope,binding,original,prepared,paths(probe,podName).get(5),podName);if(!same(pod,finalPod))throw denied();
+            var finalPod=get(scope,binding,original,prepared,paths(probe,podName).get(5),podName);if(!samePod(pod,finalPod))throw denied();
+            if(!same(runtimeClass,get(scope,binding,original,prepared,runtimePath,null)))throw denied();
             for(int i=0;i<4;i++){var first=switch(i){case 0->files;case 1->network;case 2->job;default->node;};if(!same(first,get(scope,binding,original,prepared,paths.get(i),null)))throw denied();}
             if(System.nanoTime()-began>20_000_000_000L)throw denied();
             var result=new TreeMap<String,Object>();result.put("version","runtime-probe-capture-v1");result.put("planSha256",prepared.sha256());result.put("phase",phase.name());result.put("node",json.convertValue(probe.path("node"),Object.class));
@@ -137,23 +148,65 @@ public final class KubernetesProbeCollector {
         var meta=actual.path("metadata");if(!meta.path("uid").isTextual() || !SignedRuntimeEvidence.uid(meta.path("uid").asText()) || !meta.path("resourceVersion").isTextual() || meta.path("resourceVersion").asText().isBlank() || meta.hasNonNull("deletionTimestamp") || (meta.hasNonNull("ownerReferences") && !meta.path("ownerReferences").isEmpty()))throw denied();
         for(String field:List.of("labels","annotations"))for(var entry:expected.path("metadata").path(field).properties())if(!entry.getValue().equals(meta.path(field).path(entry.getKey())))throw denied();
     }
-    private JsonNode pod(JsonNode probe,JsonNode pod,V1Job expected,String uid) throws Exception {
+    private JsonNode pod(JsonNode probe,JsonNode pod,V1Job expected,String uid,JsonNode runtimeClass) {
         var meta=pod.path("metadata");String name=meta.path("name").asText();if(!SignedRuntimeEvidence.name(name) || !name.startsWith(expected.getMetadata().getName()+"-") || !meta.path("uid").isTextual() || !SignedRuntimeEvidence.uid(meta.path("uid").asText()) || !meta.path("resourceVersion").isTextual() || meta.path("resourceVersion").asText().isBlank() || !expected.getMetadata().getNamespace().equals(meta.path("namespace").asText()) || meta.hasNonNull("deletionTimestamp"))throw denied();
         for(var entry:expected.getSpec().getTemplate().getMetadata().getLabels().entrySet())if(!entry.getValue().equals(meta.path("labels").path(entry.getKey()).asText()))throw denied();
         for(var entry:expected.getSpec().getTemplate().getMetadata().getAnnotations().entrySet())if(!entry.getValue().equals(meta.path("annotations").path(entry.getKey()).asText()))throw denied();
         if(meta.path("ownerReferences").size()!=1)throw denied();var owner=meta.path("ownerReferences").get(0);if(!owner.path("controller").asBoolean() || !uid.equals(owner.path("uid").asText()) || !"Job".equals(owner.path("kind").asText()) || !expected.getMetadata().getName().equals(owner.path("name").asText()))throw denied();
         if(!probe.path("node").path("name").asText().equals(pod.path("spec").path("nodeName").asText()))throw denied();
-        var copy=(ObjectNode)pod.path("spec").deepCopy();copy.remove("nodeName");
-        if(copy.path("tolerations").isArray() && !copy.path("tolerations").isEmpty()){
-            for(var value:copy.path("tolerations"))if(!Set.of("node.kubernetes.io/not-ready","node.kubernetes.io/unreachable").contains(value.path("key").asText()) || !"Exists".equals(value.path("operator").asText()) || !"NoExecute".equals(value.path("effect").asText()) || value.path("tolerationSeconds").asLong(-1)!=300 || value.size()!=4)throw denied();copy.remove("tolerations");
-        }
-        var actualSpec=JSON.<V1PodSpec>deserialize(copy.toString(),V1PodSpec.class);if(!copy.equals(json.readTree(JSON.serialize(actualSpec))))throw denied();
-        var synthetic=JSON.<V1Job>deserialize(JSON.serialize(expected),V1Job.class);synthetic.getMetadata().uid(uid).resourceVersion("probe-pod-spec");synthetic.getSpec().getTemplate().spec(actualSpec);
-        KubernetesWorkerActivator.verifySavedJob(expected,synthetic,uid,false,json);
+        var observed=(ObjectNode)pod.path("spec").deepCopy();observed.remove("nodeName");
+        var reviewed=(ObjectNode)probe.at("/job/spec/template/spec").deepCopy();
+        applyRuntimeClass(reviewed,observed,runtimeClass);
+        KubernetesWorkerActivator.verifyPodSpec(reviewed,observed,json);
         if(pod.path("status").path("containerStatuses").size()!=1 || !pod.path("status").path("initContainerStatuses").isEmpty() || !pod.path("status").path("ephemeralContainerStatuses").isEmpty())throw denied();
         var state=pod.path("status").path("containerStatuses").get(0);String image=expected.getSpec().getTemplate().getSpec().getContainers().getFirst().getImage(),digest=image.substring(image.lastIndexOf('@')+1),actualImage=state.path("imageID").asText();
         if(!"k6".equals(state.path("name").asText()) || !state.path("restartCount").isIntegralNumber() || state.path("restartCount").asInt(-1)!=0 || !state.path("state").isObject() || state.path("state").size()!=1 || !(actualImage.equals(digest) || actualImage.endsWith("@"+digest)))throw denied();
         return state;
+    }
+    private void applyRuntimeClass(ObjectNode reviewed,ObjectNode observed,JsonNode runtime) {
+        var meta=runtime.path("metadata");
+        if(!"RuntimeClass".equals(runtime.path("kind").asText()) || !"node.k8s.io/v1".equals(runtime.path("apiVersion").asText())
+                || !reviewed.path("runtimeClassName").equals(meta.path("name")) || !SignedRuntimeEvidence.uid(meta.path("uid").asText())
+                || !meta.path("resourceVersion").isTextual() || meta.path("resourceVersion").asText().isBlank()
+                || meta.hasNonNull("deletionTimestamp") || runtime.path("handler").asText().isBlank())throw denied();
+
+        // Kubernetes applies these RuntimeClass fields to the admitted Pod, leaving the Job template alone.
+        var selector=reviewed.path("nodeSelector").isMissingNode()?json.createObjectNode():(ObjectNode)reviewed.path("nodeSelector").deepCopy();
+        var runtimeSelector=runtime.at("/scheduling/nodeSelector");
+        if(!runtimeSelector.isMissingNode() && !runtimeSelector.isObject())throw denied();
+        for(var entry:runtimeSelector.properties()){
+            if(!entry.getValue().isTextual() || (selector.has(entry.getKey()) && !selector.path(entry.getKey()).equals(entry.getValue())))throw denied();
+            selector.set(entry.getKey(),entry.getValue());
+        }
+        reviewed.set("nodeSelector",selector);
+        var overhead=runtime.at("/overhead/podFixed");
+        if(!overhead.isMissingNode()){
+            if(!overhead.isObject() || overhead.properties().stream().anyMatch(entry->!entry.getValue().isTextual()))throw denied();
+            reviewed.set("overhead",overhead);
+        }
+
+        var required=tolerations(reviewed.path("tolerations"));
+        for(var toleration:tolerations(runtime.at("/scheduling/tolerations")))if(!required.contains(toleration))required.add(toleration);
+        var remaining=tolerations(observed.path("tolerations"));
+        for(var toleration:required)if(!remaining.remove(toleration))throw denied();
+        Set<String> defaults=new HashSet<>();
+        for(var toleration:remaining){
+            String key=toleration.path("key").asText();
+            if(!Set.of("node.kubernetes.io/not-ready","node.kubernetes.io/unreachable").contains(key) || !defaults.add(key)
+                    || !"Exists".equals(toleration.path("operator").asText()) || !"NoExecute".equals(toleration.path("effect").asText())
+                    || !toleration.path("tolerationSeconds").isIntegralNumber() || toleration.path("tolerationSeconds").asLong()!=300
+                    || toleration.size()!=4 || required.contains(toleration))throw denied();
+        }
+        reviewed.remove("tolerations");observed.remove("tolerations");
+    }
+    private static List<JsonNode> tolerations(JsonNode value) {
+        if(!value.isMissingNode() && !value.isArray())throw denied();
+        List<JsonNode> result=new ArrayList<>();
+        for(var item:value) {
+            if(!item.isObject() || result.contains(item))throw denied();
+            result.add(item);
+        }
+        return result;
     }
     private void summary(JsonNode probe,Summary summary){
         var phase=RuntimeProbePlan.Phase.valueOf(probe.path("phase").asText());int timeout=probe.path("requestTimeoutMs").asInt();
@@ -173,6 +226,22 @@ public final class KubernetesProbeCollector {
         if(last==null || last<before.toEpochMilli()-1000 || last>after.toEpochMilli()+1000)throw denied();return last;
     }
     private boolean same(JsonNode one,JsonNode two){return one.path("metadata").path("uid").equals(two.path("metadata").path("uid")) && one.path("metadata").path("resourceVersion").equals(two.path("metadata").path("resourceVersion")) && one.equals(two);}
+    private boolean samePod(JsonNode listed,JsonNode direct) {
+        if(!(listed.deepCopy() instanceof ObjectNode list) || !(direct.deepCopy() instanceof ObjectNode read))return false;
+        for(var pod:List.of(list,read)) {
+            if((pod.has("apiVersion") && !"v1".equals(pod.path("apiVersion").asText())) || (pod.has("kind") && !"Pod".equals(pod.path("kind").asText())))return false;
+            pod.remove(List.of("kind","apiVersion"));
+        }
+        return same(list,read);
+    }
+    private static boolean deadlineFailure(JsonNode job) {
+        for(var condition:job.at("/status/conditions"))if("Failed".equals(condition.path("type").asText()) && "True".equals(condition.path("status").asText())) {
+            String reason=condition.path("reason").asText();
+            var retries=job.at("/spec/backoffLimit");
+            return "DeadlineExceeded".equals(reason) || ("BackoffLimitExceeded".equals(reason) && retries.isIntegralNumber() && retries.asInt(-1)==0);
+        }
+        return false;
+    }
     private static boolean conditions(JsonNode job,String type){int matches=0;for(var condition:job.path("status").path("conditions"))if(type.equals(condition.path("type").asText()) && "True".equals(condition.path("status").asText()))matches++;return matches==1;}
     private String hash(JsonNode body) throws Exception{return K6PlanEnvelope.hash(json.writeValueAsString(json.convertValue(body,Object.class)));}
     private static IllegalStateException denied(){return new IllegalStateException("Fixed probe observations could not be verified; retain probe recovery evidence.");}
