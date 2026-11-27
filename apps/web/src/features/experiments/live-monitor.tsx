@@ -132,7 +132,8 @@ export function LiveMonitor() {
         </div>
       </div>
       <div hidden={panel !== 'evidence'}>
-        {panel === 'evidence' && run.id === runId && <SavedRunResult key={`${runId}-${run.revision}-${monitoring?.monitor.outcome}-${retry}`} runId={runId} />}
+        {panel === 'evidence' && run.id === runId && <SavedRunResult key={runId} runId={runId}
+          refreshKey={`${run.revision}-${monitoring?.monitor.outcome}-${retry}`} completed={run.status === 'COMPLETED'} />}
         <section className={styles.panel}>
           <div className={styles.panelHead}><h2>Run evidence</h2><Link href={`/experiments/review/?snapshot=${encodeURIComponent(run.snapshotId)}`}>Open saved inputs</Link></div>
           <div className={styles.body}><dl className={styles.meta}><dt>Worker</dt><dd>{run.workerName} · {run.workerState ?? 'Not observed'}</dd><dt>HTTP source</dt><dd>{metrics?.http.source ?? 'Unavailable'}</dd><dt>Window (UTC)</dt><dd>{metrics?.http.windowFrom && metrics.http.windowUntil ? `${metrics.http.windowFrom} → ${metrics.http.windowUntil}` : 'Unavailable'}</dd><dt>CPU source</dt><dd>{metrics?.resources.source ?? 'Unavailable'}</dd><dt>SLO verdict</dt><dd>{run.verdict}</dd><dt>Restoration</dt><dd>Unverified</dd></dl></div>

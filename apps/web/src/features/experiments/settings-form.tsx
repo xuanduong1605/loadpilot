@@ -12,6 +12,7 @@ import { LoadProfileEditor, encodeProfile, profileValues } from './load-profile'
 import { SloPolicyEditor, encodeSlo, sloValues } from './slo-policy';
 import { LoadSummary, SloSummary, SummaryRows } from './experiment-summary';
 import summary from './experiment-summary.module.css';
+import { SettingsAssistant, type EffectiveSettings, type SettingsChange, type SettingsSnapshot } from './settings-assistant';
 
 const fields = [
   ['minimumRate', 'Minimum load (iterations/s)', 1, 10000, 1],
@@ -24,6 +25,7 @@ const fields = [
   ['maximumRuns', 'Maximum total attempts (including retries)', 1, 100, 1],
   ['totalBudgetSeconds', 'Total time budget (seconds)', 1, 86400, 1],
 ] as const;
+
 const executionFields = [
   ['precisionIterationsPerSecond', 'Search precision (iterations/s)', 1, 10000],
   ['preAllocatedVUs', 'Preallocated virtual users', 1, 1000],
@@ -37,6 +39,15 @@ const executionFields = [
   ['maximumAttemptsPerRun', 'Maximum attempts per run (including first)', 1, 3],
 ] as const;
 
+const settingsLabels = {
+  ...Object.fromEntries([...fields, ...executionFields].map(([key, label]) => [key, label])),
+  minimumRate: 'Minimum load (iter/s)',
+  maximumRate: 'Maximum load (iter/s)',
+  latencyThresholdMs: 'Maximum latency (ms)',
+  latencyPercentile: 'Latency percentile',
+  measurementSeconds: 'Measurement window (s)',
+};
+
 type Review = { valid: boolean; errors: string[]; maximumAttemptSeconds: number; reservedAttemptsPerLoad: number };
 type ScenarioPage = { items: { id: string; name: string; latestVersion: number }[]; total: number };
 type ScriptVersion = { scenarioId: string; name: string; version: number; sha256: string; approved: boolean };
@@ -44,6 +55,7 @@ type ScriptVersion = { scenarioId: string; name: string; version: number; sha256
 export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: string) => void }) {
   const [step, setStep] = useState(0);
   const stepHeading = useRef<HTMLHeadingElement>(null);
+  const form = useRef<HTMLFormElement>(null);
   const stepNames = ['Target & script', 'SLO policy', 'Load & budgets', 'Execution limits', 'Review & save'];
   function goToStep(next: number) { setStep(next); requestAnimationFrame(() => { stepHeading.current?.focus(); stepHeading.current?.scrollIntoView({ block: 'start' }); }); }
   const [review, setReview] = useState<Review>();
@@ -140,6 +152,39 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
   }, []);
+  function effectiveSettings(element: HTMLFormElement): EffectiveSettings {
+    const data = new FormData(element);
+    const settings = Object.fromEntries(fields.map(([key]) => [key, Number(data.get(key))]));
+    const executionBounds = Object.fromEntries(executionFields.map(([key]) => [key,
+      key === 'precisionIterationsPerSecond' && profile.mode === 'SINGLE_RUN' ? null : Number(data.get(key))]));
+    return { settings, executionBounds, loadProfile: encodeProfile(profile, settings.durationSeconds), sloPolicy: encodeSlo(slo, settings) };
+  }
+
+  function readCurrentSettings() {
+    if (!form.current) return null;
+    const controls = form.current.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-setup-step]:not([data-setup-step="0"]) :is(input, select)');
+    return Array.from(controls).every(control => control.validity.valid) ? effectiveSettings(form.current) : null;
+  }
+
+  function settingsSnapshot(): SettingsSnapshot {
+    return { current: readCurrentSettings(), fields: { ...values, ...executionValues, latencyThresholdMs: values.p95LatencyMs,
+      latencyPercentile: slo.latencyPercentile, measurementSeconds: profile.measurementSeconds },
+    revision: JSON.stringify([values, executionValues, profile, slo, targetId, scenarioId, scenarioVersion, draft?.revision]) };
+  }
+
+  function applySettings(changes: SettingsChange[]) {
+    const proposed = Object.fromEntries(changes.map(({ field, value }) => [field, String(value)]));
+    const selected = (controls: ReadonlyArray<readonly [string, ...unknown[]]>) => Object.fromEntries(controls.flatMap(([key]) => {
+      const field = key === 'p95LatencyMs' ? 'latencyThresholdMs' : key;
+      return Object.hasOwn(proposed, field) ? [[key, proposed[field]]] : [];
+    }));
+    setValues(previous => ({ ...previous, ...selected(fields) }));
+    setExecutionValues(previous => ({ ...previous, ...selected(executionFields) }));
+    if (proposed.measurementSeconds) setProfile(previous => ({ ...previous, measurementSeconds: proposed.measurementSeconds }));
+    if (proposed.latencyPercentile) setSlo(previous => ({ ...previous, latencyPercentile: `P${proposed.latencyPercentile}` }));
+    setDirty(true); setSaved(false); setReview(undefined); setError('');
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (reviewBusy) return;
@@ -151,20 +196,16 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
       requestAnimationFrame(() => invalid.reportValidity());
       return;
     }
-    const data = new FormData(event.currentTarget);
-    const settings = Object.fromEntries(fields.map(([key]) => [key, Number(data.get(key))]));
-    const executionBounds = Object.fromEntries(executionFields.map(([key]) => [key, key === 'precisionIterationsPerSecond' && profile.mode === 'SINGLE_RUN' ? null : Number(data.get(key))]));
-    const loadProfile = encodeProfile(profile, settings.durationSeconds);
-    const sloPolicy = encodeSlo(slo, settings);
+    const effective = effectiveSettings(event.currentTarget);
     const save = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'save';
     setBusy(true); setError(''); setReview(undefined); setSaved(false);
     try {
       if (save) {
         const value = await mutate<Draft>(draft ? `/api/experiments/drafts/${draft.id}` : '/api/experiments/drafts', draft ? 'PUT' : 'POST',
-          { targetId, settings, executionBounds, loadProfile, sloPolicy, revision: draft?.revision, scenarioId: scenarioId || null, scenarioVersion: scenarioVersion ? Number(scenarioVersion) : null });
+          { targetId, ...effective, revision: draft?.revision, scenarioId: scenarioId || null, scenarioVersion: scenarioVersion ? Number(scenarioVersion) : null });
         setDraft(value); setSaved(true); setDirty(false);
         window.history.replaceState(null, '', `/experiments/new/?draft=${encodeURIComponent(value.id)}`);
-      } else setReview(await mutate<Review>('/api/experiments/settings/validate-effective', 'POST', { settings, executionBounds, loadProfile, sloPolicy }));
+      } else setReview(await mutate<Review>('/api/experiments/settings/validate-effective', 'POST', effective));
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Cannot validate settings.'); }
     finally { setBusy(false); }
@@ -175,8 +216,11 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
       <StatusBadge tone="warning">Draft</StatusBadge>
     </>} />
     <ExperimentNavigation screen="setup" />
-    <nav className={styles.steps} aria-label="Setup steps">{stepNames.map((name, index) => <button key={name} type="button" aria-current={step === index ? 'step' : undefined} onClick={() => goToStep(index)}>{index + 1}. {name}</button>)}</nav><form noValidate className={step === 4 ? `${styles.form} ${styles.reviewForm}` : styles.form} onSubmit={event => { if (step !== 4) { event.preventDefault(); goToStep(step + 1); } else void submit(event); }} onChange={() => { setReview(undefined); setError(''); setSaved(false); setDirty(true); }}>
+    <nav className={styles.steps} aria-label="Setup steps">{stepNames.map((name, index) => <button key={name} type="button" aria-current={step === index ? 'step' : undefined} onClick={() => goToStep(index)}>{index + 1}. {name}</button>)}</nav><form ref={form} noValidate className={step === 4 ? `${styles.form} ${styles.reviewForm}` : styles.form} onSubmit={event => { if (step !== 4) { event.preventDefault(); goToStep(step + 1); } else void submit(event); }} onChange={() => { setReview(undefined); setError(''); setSaved(false); setDirty(true); }}>
     <h2 ref={stepHeading} tabIndex={-1} className={styles.stepHeading}>{stepNames[step]}</h2>
+    <div className={styles.settingsAssistantSlot} hidden={step !== 0 && step !== 4}>
+      <SettingsAssistant labels={settingsLabels} read={settingsSnapshot} apply={applySettings} disabled={busy || reviewBusy} />
+    </div>
     <div data-setup-step={0} hidden={step !== 0}>    <fieldset disabled={busy || reviewBusy} className={styles.fields}>
       <legend>Choose a target and approved script</legend>
       <label htmlFor="experiment-system">System</label>

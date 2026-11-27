@@ -94,6 +94,21 @@
 .links a { display: inline-flex; align-items: center; gap: 5px; min-height: 36px; font-weight: 550; }
 .links a:hover { color: var(--primary-hover); }
 .waiting { color: var(--muted); font-size: var(--text-metadata); margin: 10px 0 0; }
+.runReport { margin-top: 14px; max-width: 72ch; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-md); overflow-wrap: anywhere; }
+.runReport h2, .runReport h3, .runReport h4, .runReport p { margin: 0; }
+.runReport h2 { font-size: var(--text-subheading); }
+.runReport h3 { font-size: var(--text-body); margin-top: 16px; margin-bottom: 6px; }
+.runReport h4 { font-size: var(--text-body); scroll-margin: 12px; }
+.runObservation, .runFindings > li { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
+.runObservation > p { color: var(--muted); font-size: var(--text-metadata); margin-top: 4px; }
+.runObservations { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(128px, 100%), 1fr)); gap: 8px 14px; margin: 8px 0 0; }
+.runObservations dt { color: var(--muted); font-size: var(--text-metadata); }
+.runObservations dd { margin: 1px 0 0; font-variant-numeric: tabular-nums; }
+.runFindings { list-style: none; padding: 0; margin: 0; }
+.runFindings p strong { display: block; }
+.runFindings p + p { margin-top: 6px; }
+.runFindings .links { margin: 4px 0 0; }
+.runReport .reportNotice { margin-top: 12px; }
 .chatState { padding-block: 40px; }
 .chatState a { margin-inline-start: 12px; }
 
@@ -137,6 +152,7 @@
 }
 
 @media (max-width: 520px) {
+  .runObservations { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .barActions { flex-wrap: wrap; justify-content: flex-end; }
   .historyToggle svg { display: none; }
   .welcome { padding-block: 24px 14px; }

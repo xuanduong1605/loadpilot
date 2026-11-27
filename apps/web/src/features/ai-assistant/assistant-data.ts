@@ -14,9 +14,19 @@ export type Summary = { id: string; title: string; turnCount: number; updatedAt:
 type Destination = 'SYSTEMS' | 'SCRIPTS' | 'SCRIPT_EDITOR' | 'RUNS' | 'RUN_MONITOR' | 'RUN_EVIDENCE' | 'INPUTS' | 'INPUT_REVIEW' | 'SETUP';
 export type AnswerLink = { destination: Destination; recordId: string | null; version: number | null; label: string };
 export type Message = { text: string; task: Task; recordId: string | null; requestId: string; expectedTurns: number };
+export type EvidenceId = 'WHOLE_RUN' | 'PARTIAL_HTTP' | 'COMPARISON_WHOLE_RUN';
+export type RunAnalysis = {
+  status: 'READY' | 'INSUFFICIENT_DATA' | 'PROVIDER_UNAVAILABLE';
+  runStatus: string;
+  verdict: string;
+  comparison?: { runId: string; runStatus: string; verdict: string; requestedIterationsPerSecond: number };
+  observations: { id: EvidenceId; from: string; until: string; httpRequests: number; p95LatencyMs: number;
+    httpFailureRatio: number; httpRequestsPerSecond: number | null }[];
+  findings: { hypothesis: string; suggestedCheck: string; evidenceIds: EvidenceId[] }[];
+};
 export type Turn = Omit<Message, 'expectedTurns'> & {
   number: number;
-  reply: { text: string; links: AnswerLink[]; suggestion: string | null; providerUnavailable: boolean };
+  reply: { text: string; links: AnswerLink[]; suggestion: string | null; providerUnavailable: boolean; analysis?: RunAnalysis };
 };
 export type Conversation = { summary: Summary; turns: Turn[] };
 export type History = { items: Summary[]; hasMore: boolean };

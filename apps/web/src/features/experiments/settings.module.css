@@ -33,3 +33,22 @@
 .stepHeading:focus { outline: none; }
 .stepActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); padding-top: 24px; margin-top: 28px; }
 .stepActions span { font-size: var(--text-metadata); }
+
+.settingsAssistantSlot { margin-bottom: 20px; }
+.settingsAssistant { display: grid; gap: 14px; max-width: 72ch; }
+.settingsAssistant textarea { resize: vertical; line-height: 1.55; }
+.settingsAssistant > p { margin: 0; }
+.settingsChanges { width: 100%; border-collapse: collapse; table-layout: fixed; text-align: left; font-family: var(--guide-font); font-size: var(--text-body); }
+.settingsChanges th, .settingsChanges td { padding: 8px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.settingsChanges th { font-weight: 500; }
+.settingsChanges thead th:first-child { width: 56%; }
+.settingsChanges td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.shortHeading { display: none; }
+@media (max-width: 480px) {
+  .settingsAssistant textarea { min-height: 108px; }
+  .settingsChanges th, .settingsChanges td { padding: 6px 4px; }
+  .settingsChanges thead th { white-space: nowrap; }
+  .settingsChanges thead th:first-child { width: 54%; }
+  .fullHeading { display: none; }
+  .shortHeading { display: inline; }
+}

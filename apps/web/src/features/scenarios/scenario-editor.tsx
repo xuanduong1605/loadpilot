@@ -5,6 +5,7 @@ import { Button, Notice, TextField } from '../../components/form-controls';
 import { api, mutate } from '../../lib/api';
 import styles from './scenarios.module.css';
 import CodeEditor from './code-editor';
+import { ScriptDraftAssistant } from './script-draft-assistant';
 import { Icon } from '../../components/icon';
 import { PageHeading, RecordMetadata } from '../../components/console-ui';
 
@@ -83,6 +84,7 @@ export function ScenarioEditor() {
     finally { setBusy(false); }
   }
   function edit() { setDirty(true); setSaved(false); setReview(undefined); setAcknowledged(false); }
+  function editSource(next: string) { setSource(next); edit(); }
   return <>
     <PageHeading title="Script editor" back={{ href: '/scenarios/', label: 'Back to scripts' }} actions={current && <RecordMetadata name={current.name}>
       Version {current.version} · Saved by {current.createdBy} · <time dateTime={current.createdAt}>{new Date(current.createdAt).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</time>
@@ -108,6 +110,8 @@ export function ScenarioEditor() {
             <Button className={styles.compactButton} disabled={busy || dirty || !acknowledged} onClick={() => void approve()}><Icon name="lock" width={13} height={13} />Approve version</Button>
           </>}
         </section>}
+        <ScriptDraftAssistant source={source} version={`${current?.scenarioId ?? 'new'}:${current?.version ?? 0}`}
+          disabled={busy} apply={editSource} />
         {current && <details className={styles.version}>
           <summary>Version details</summary>
           <dl>
@@ -122,7 +126,7 @@ export function ScenarioEditor() {
           </div>
         </details>}
       </section>
-      <CodeEditor value={source} disabled={busy} sourceSize={`${sourceBytes.toLocaleString()} / 65,536 UTF-8 bytes`} onChange={value => { setSource(value); edit(); }} />
+      <CodeEditor value={source} disabled={busy} sourceSize={`${sourceBytes.toLocaleString()} / 65,536 UTF-8 bytes`} onChange={editSource} />
     </form>
   </>;
 }

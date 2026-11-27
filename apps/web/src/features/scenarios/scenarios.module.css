@@ -27,6 +27,9 @@
 .version dt { font-size: var(--text-metadata); color: var(--muted); }
 .version dd { margin: 0 0 8px; }
 .version .status { margin-bottom: 8px; }
+.scriptDraft { display: grid; gap: 10px; min-width: 0; padding-block: 8px; }
+.scriptDraft textarea { resize: vertical; line-height: 1.55; }
+.scriptDraftSource { min-width: 0; max-height: 210px; margin: 0; padding: 8px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-field); white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-code); }
 
 .editorPane { display: flex; flex-direction: column; }
 .editorHeader {

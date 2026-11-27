@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/icon';
 import { api, ApiError, mutate } from '../../lib/api';
 import { AssistantContext } from './assistant-context';
+import { AssistantRunReport } from './assistant-run-report';
 import { answerHref, tasks, uuid, type Conversation, type Message, type Sent, type Task, type Turn } from './assistant-data';
 import styles from './assistant.module.css';
 
@@ -195,14 +196,17 @@ function Exchange({ turn }: { turn: Turn }) {
     <article className={styles.answer} aria-label="Assistant reply">
       <span className={styles.answerTitle}><Icon name="message" width={18} height={18} />Loadpilot</span>
       <p className={styles.copy}>{turn.reply.text}</p>
+      {turn.reply.analysis && <AssistantRunReport id={turn.requestId} report={turn.reply.analysis} />}
       {turn.reply.suggestion && <div className={styles.suggestion}>
         <h2>AI suggestion</h2><p className={styles.copy}>{turn.reply.suggestion}</p>
       </div>}
-      {turn.reply.providerUnavailable && <p className={styles.waiting}>AI suggestions are temporarily unavailable. You can continue with the guidance above.</p>}
+      {turn.reply.providerUnavailable && !turn.reply.analysis && <p className={styles.waiting}>AI suggestions are temporarily unavailable. You can continue with the guidance above.</p>}
       {turn.reply.links.length > 0 && <ul className={styles.links} aria-label="Related pages">
         {turn.reply.links.map(link => {
           const href = answerHref(link);
-          return href && <li key={href}><Link href={href}>{link.label}<Icon name="arrow" width={15} height={15} /></Link></li>;
+          const label = turn.reply.analysis?.status === 'PROVIDER_UNAVAILABLE' && link.destination === 'RUN_EVIDENCE' && link.recordId === turn.recordId
+            ? 'Return to run evidence to retry' : link.label;
+          return href && <li key={href}><Link href={href}>{label}<Icon name="arrow" width={15} height={15} /></Link></li>;
         })}
       </ul>}
     </article>
