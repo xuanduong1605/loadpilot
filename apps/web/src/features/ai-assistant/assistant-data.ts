@@ -1,4 +1,4 @@
-export type Task = 'ASK' | 'SCRIPT' | 'STATUS' | 'START' | 'RESULT' | 'EDIT';
+export type Task = 'ASK' | 'SCRIPT' | 'STATUS' | 'START' | 'RESULT' | 'EDIT' | 'REPORT';
 
 export const starterPrompts = [
   'How do I approve a script?',
@@ -18,10 +18,22 @@ type Destination = 'SYSTEMS' | 'SCRIPTS' | 'SCRIPT_EDITOR' | 'RUNS' | 'RUN_MONIT
 export type AnswerLink = { destination: Destination; recordId: string | null; version: number | null; label: string };
 export type Message = { text: string; task: Task; recordId: string | null; requestId: string; expectedTurns: number };
 export type EvidenceId = 'WHOLE_RUN' | 'PARTIAL_HTTP' | 'COMPARISON_WHOLE_RUN';
+export type ProviderIssue = 'BUSY' | 'TIMEOUT' | 'INVALID_RESPONSE' | 'UNAVAILABLE';
+
+export function providerIssueMessage(issue?: ProviderIssue) {
+  switch (issue) {
+    case 'BUSY': return 'Gemini is handling too many requests. Wait a moment and try again.';
+    case 'TIMEOUT': return 'Gemini took too long to reply. Try again.';
+    case 'INVALID_RESPONSE': return 'Gemini returned an unusable response. Try again.';
+    default: return 'Gemini is temporarily unavailable. Try again later.';
+  }
+}
+
 export type RunAnalysis = {
   status: 'READY' | 'INSUFFICIENT_DATA' | 'PROVIDER_UNAVAILABLE';
   runStatus: string;
   verdict: string;
+  providerIssue?: ProviderIssue;
   comparison?: { runId: string; runStatus: string; verdict: string; requestedIterationsPerSecond: number };
   observations: { id: EvidenceId; from: string; until: string; httpRequests: number; p95LatencyMs: number;
     httpFailureRatio: number; httpRequestsPerSecond: number | null }[];
@@ -29,7 +41,7 @@ export type RunAnalysis = {
 };
 export type Turn = Omit<Message, 'expectedTurns'> & {
   number: number;
-  reply: { text: string; links: AnswerLink[]; suggestion: string | null; providerUnavailable: boolean; analysis?: RunAnalysis };
+  reply: { text: string; links: AnswerLink[]; suggestion: string | null; providerUnavailable: boolean; analysis?: RunAnalysis; providerIssue?: ProviderIssue };
 };
 export type Conversation = { summary: Summary; turns: Turn[] };
 export type History = { items: Summary[]; hasMore: boolean };

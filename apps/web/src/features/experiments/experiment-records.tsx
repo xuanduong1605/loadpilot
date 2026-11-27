@@ -27,6 +27,14 @@ export function snapshotOption(entry: Entry) {
 }
 
 export function useExperimentRecords(kind: Kind, limit = 20) {
+  return useRecordPages(`/api/experiments/library?kind=${kind}&limit=${limit}`, limit);
+}
+
+export function useRunComparisonRecords(baseline: string) {
+  return useRecordPages(`/api/assistant/runs/${encodeURIComponent(baseline)}/comparison-options`, 20);
+}
+
+function useRecordPages(path: string, limit: number) {
   const [items, setItems] = useState<Entry[]>([]);
   const [offset, setOffset] = useState(0);
   const [retry, setRetry] = useState(0);
@@ -38,7 +46,8 @@ export function useExperimentRecords(kind: Kind, limit = 20) {
     let active = true;
     const controller = new AbortController();
     setLoading(true); setError('');
-    void api<Page>(`/api/experiments/library?kind=${kind}&offset=${offset}&limit=${limit}`, { signal: controller.signal })
+    const url = `${path}${path.includes('?') ? '&' : '?'}offset=${offset}`;
+    void api<Page>(url, { signal: controller.signal })
       .then(page => {
         if (!active) return;
         setItems(previous => offset === 0 ? page.items : [...previous, ...page.items.filter(item => !previous.some(entry => entry.id === item.id))]);
@@ -47,7 +56,7 @@ export function useExperimentRecords(kind: Kind, limit = 20) {
       .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'Cannot load these experiments.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [kind, limit, offset, retry]);
+  }, [path, offset, retry]);
 
   return { items, hasMore, loading, error, more: () => setOffset(value => value + limit), retry: () => setRetry(value => value + 1) };
 }

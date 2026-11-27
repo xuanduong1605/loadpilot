@@ -40,7 +40,7 @@ export function SettingsAssistant({ read, apply, labels, disabled }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [result, setResult] = useState<{ snapshot: SettingsSnapshot; changes: SettingsChange[] }>();
+  const [result, setResult] = useState<{ snapshot: SettingsSnapshot; changes: SettingsChange[]; stageDuration?: number }>();
   const disclosure = useRef<HTMLElement>(null);
 
   async function requestPreview() {
@@ -55,7 +55,13 @@ export function SettingsAssistant({ read, apply, labels, disabled }: {
       }
       const changes = proposal.changes.filter(change => change.value !== currentValue(snapshot, change.field));
       if (!changes.length) setNotice('The proposed values already match the form.');
-      else setResult({ snapshot, changes });
+      else {
+        const before = snapshot.current?.loadProfile;
+        const after = proposal.preview?.loadProfile;
+        const stageDuration = before?.shape === 'STEADY' && before.stages.length === 1 && after?.stages.length === 1
+          && before.stages[0].durationSeconds !== after.stages[0].durationSeconds ? after.stages[0].durationSeconds : undefined;
+        setResult({ snapshot, changes, stageDuration });
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'AI settings suggestions are unavailable.');
     } finally {
@@ -98,6 +104,7 @@ export function SettingsAssistant({ read, apply, labels, disabled }: {
       {notice && <p role="status">{notice}</p>}
       {result && <>
         {!result.snapshot.current && <p>Review the proposed values. Complete the remaining settings to validate the full form.</p>}
+        {result.stageDuration !== undefined && <p>The steady stage uses the run duration. Both will be {result.stageDuration} seconds.</p>}
         <table className={styles.settingsChanges} aria-label="Proposed settings">
           <thead><tr><th scope="col">Setting</th>
             <th scope="col" aria-label="Current"><span className={styles.fullHeading}>Current</span><span className={styles.shortHeading}>Now</span></th>

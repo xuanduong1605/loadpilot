@@ -3,10 +3,11 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/icon';
+import { BrowserTransportNotice } from '../../components/browser-transport-notice';
 import { api, ApiError, mutate } from '../../lib/api';
 import { requestId } from '../../lib/request-id';
 import { AssistantRunReport } from './assistant-run-report';
-import { answerHref, starterPrompts, uuid, type Conversation, type Message, type Sent, type Turn } from './assistant-data';
+import { answerHref, providerIssueMessage, starterPrompts, uuid, type Conversation, type Message, type Sent, type Turn } from './assistant-data';
 import styles from './assistant.module.css';
 
 type Pending = { id: string; message: Message };
@@ -22,6 +23,7 @@ export function AssistantChat({ id, initial, prompt, focusOnOpen, onSaved }: {
   const [loadError, setLoadError] = useState('');
   const [reload, setReload] = useState(0);
   const [text, setText] = useState(prompt);
+  const [reportSelection, setReportSelection] = useState<string | null>();
   const [pending, setPending] = useState<Pending>();
   const [sendError, setSendError] = useState<{ message: string; conflict: boolean }>();
   const sending = useRef(false);
@@ -60,6 +62,9 @@ export function AssistantChat({ id, initial, prompt, focusOnOpen, onSaved }: {
   }, [id, initial, reload]);
 
   const turns = conversation?.turns ?? [];
+  const report = reportSelection === undefined
+    ? turns.findLast(turn => turn.reply.analysis?.observations.length)
+    : turns.find(turn => turn.requestId === reportSelection && turn.reply.analysis?.observations.length);
   const full = turns.length >= MAX_TURNS;
   const welcome = !loading && !loadError && turns.length === 0 && !busy;
   const blocked = loading || Boolean(loadError) || full;
@@ -74,8 +79,9 @@ export function AssistantChat({ id, initial, prompt, focusOnOpen, onSaved }: {
   async function send() {
     if (sending.current || blocked || sendError?.conflict || !text.trim()) return;
     const messageText = text.trim();
-    const request = pending?.message.text === messageText ? pending : { id: id ?? pending?.id ?? requestId(),
-      message: { requestId: requestId(), expectedTurns: turns.length, text: messageText, task: 'ASK', recordId: null } } satisfies Pending;
+    const reportId = report?.requestId ?? null;
+    const request = pending?.message.text === messageText && pending.message.recordId === reportId ? pending : { id: id ?? pending?.id ?? requestId(),
+      message: { requestId: requestId(), expectedTurns: turns.length, text: messageText, task: reportId ? 'REPORT' : 'ASK', recordId: reportId } } satisfies Pending;
     sending.current = true;
     scrollToLatest.current = true;
     setPending(request);
@@ -121,7 +127,13 @@ export function AssistantChat({ id, initial, prompt, focusOnOpen, onSaved }: {
         <div className={styles.transcript}>
           <h1 title={conversation?.summary.title}>{conversation?.summary.title ?? 'New chat'}</h1>
           <div ref={exchanges} className={styles.turns} role="log" aria-label="Conversation messages">
-            {turns.map(turn => <Exchange key={turn.requestId} turn={turn} />)}
+            {turns.map(turn => <Exchange key={turn.requestId} turn={turn} disabled={busy || full}
+              onAsk={() => { setReportSelection(turn.requestId); textarea.current?.focus({ preventScroll: true }); }}
+              onRetry={() => {
+                setText(turn.text);
+                setReportSelection(turn.task === 'REPORT' ? turn.recordId : null);
+                textarea.current?.focus({ preventScroll: true });
+              }} />)}
             {busy && pending && <div className={styles.exchange}>
               <Question text={pending.message.text} />
               <p className={styles.thinking} role="status"><Icon name="message" width={18} height={18} />
@@ -148,6 +160,12 @@ export function AssistantChat({ id, initial, prompt, focusOnOpen, onSaved }: {
                   }
                 }} />
               <div className={styles.composerFooter}>
+                {report && <div className={styles.reportContext}>
+                  <a href={`#analysis-${report.requestId}`} aria-label="View attached report">{report.reply.analysis?.comparison ? 'Run comparison' : 'Saved run report'}</a>
+                  <button type="button" aria-label="Remove report context" disabled={busy} onClick={() => {
+                    setReportSelection(null); textarea.current?.focus({ preventScroll: true });
+                  }}>Remove</button>
+                </div>}
                 {text.length >= MAX_LENGTH * 0.9 && <span>{text.length}/{MAX_LENGTH}</span>}
                 <button type="submit" className={styles.send} aria-label="Send message" disabled={busy || !text.trim() || sendError?.conflict}>
                   Send<Icon name="send" width={17} height={17} />
@@ -155,8 +173,9 @@ export function AssistantChat({ id, initial, prompt, focusOnOpen, onSaved }: {
               </div>
             </div>
             <p id="assistant-message-hint" className={styles.hint}>
-              Chats are saved. Gemini may receive your message and recent AI exchanges. Keep sensitive data out of chat.
+              Chats are saved. Gemini may receive your message and recent AI exchanges.{report && ' The attached report shares saved HTTP observations and findings.'} Keep sensitive data out of chat.
             </p>
+            <BrowserTransportNotice className={styles.transport} />
           </form>}
       </div>
       {welcome && <div className={styles.starters} role="group" aria-label="Example questions">
@@ -175,7 +194,7 @@ function Question({ text }: { text: string }) {
   return <div className={styles.question}><span className={styles.screenReader}>You</span><p>{text}</p></div>;
 }
 
-function Exchange({ turn }: { turn: Turn }) {
+function Exchange({ turn, onAsk, onRetry, disabled }: { turn: Turn; onAsk: () => void; onRetry: () => void; disabled: boolean }) {
   return <div className={styles.exchange}>
     <Question text={turn.text} />
     <article className={styles.answer} aria-label="Assistant reply">
@@ -186,8 +205,12 @@ function Exchange({ turn }: { turn: Turn }) {
           <summary>Loadpilot guidance</summary><p className={styles.copy}>{turn.reply.text}</p>
         </details>
       </> : <p className={styles.copy}>{turn.reply.text}</p>}
-      {turn.reply.analysis && <AssistantRunReport id={turn.requestId} report={turn.reply.analysis} />}
-      {turn.reply.providerUnavailable && !turn.reply.analysis && <p className={styles.waiting}>AI suggestions are temporarily unavailable. You can continue with the guidance above.</p>}
+      {turn.reply.analysis && <AssistantRunReport id={turn.requestId} report={turn.reply.analysis}
+        onAsk={onAsk} disabled={disabled} />}
+      {turn.reply.providerUnavailable && !turn.reply.analysis && <div className={styles.replyActions}>
+        <p className={styles.waiting}>{providerIssueMessage(turn.reply.providerIssue)}</p>
+        <button type="button" disabled={disabled} onClick={onRetry}>Edit and retry</button>
+      </div>}
       {turn.reply.links.length > 0 && <ul className={styles.links} aria-label="Related pages">
         {turn.reply.links.map(link => {
           const href = answerHref(link);

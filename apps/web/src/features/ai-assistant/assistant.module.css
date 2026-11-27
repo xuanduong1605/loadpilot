@@ -93,6 +93,17 @@
 .links a { display: inline-flex; align-items: center; gap: 5px; min-height: 36px; font-weight: 550; }
 .links a:hover { color: var(--primary-hover); }
 .waiting { color: var(--muted); font-size: var(--text-metadata); margin: 10px 0 0; }
+.replyActions { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; }
+.replyActions .waiting { margin: 0; }
+.replyActions button, .reportContext button {
+  min-height: 36px; padding: 4px 8px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md); cursor: pointer;
+}
+.replyActions button:hover:enabled, .reportContext button:hover:enabled { background: var(--surface-hover); }
+.replyActions button:disabled, .reportContext button:disabled { color: var(--muted); cursor: default; }
+.reportContext { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-inline-end: auto; }
+.reportContext a { font-weight: 550; }
+.transport { color: var(--warning); font-size: var(--text-metadata); margin: 5px 0 0; }
 .thinking { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; color: var(--muted); font-weight: 550; }
 .thinkingDots { display: inline-flex; align-items: center; gap: 4px; }
 .thinkingDots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
@@ -126,7 +137,7 @@
 .composer textarea { display: block; width: 100%; min-height: 56px; max-height: 140px; padding: 4px 6px; resize: vertical; border: 0; color: var(--ink); background: var(--surface); font-size: var(--text-subheading); }
 .composer:has(textarea:focus-visible) { outline: 2px solid var(--primary-hover); outline-offset: 2px; }
 .composer textarea:focus-visible { outline: none; }
-.composerFooter { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding-top: 6px; color: var(--muted); font-size: var(--text-metadata); }
+.composerFooter { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px 12px; padding-top: 6px; color: var(--muted); font-size: var(--text-metadata); }
 .send { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding-inline: 14px; border: 1px solid var(--action); border-radius: var(--radius-md); background: var(--action); color: var(--canvas); font-weight: 550; cursor: pointer; }
 .send:hover:not(:disabled) { background: var(--action-hover); }
 .send:disabled { background: var(--primary-soft); color: var(--muted); border-color: var(--line); cursor: default; }

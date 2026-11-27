@@ -7,7 +7,7 @@ import { requestId } from '../../lib/request-id';
 import { Button, Notice } from '../../components/form-controls';
 import controls from '../../components/form-controls.module.css';
 import { uuid, type Sent } from '../ai-assistant/assistant-data';
-import { recordLabel, useExperimentRecords } from './experiment-records';
+import { recordLabel, useRunComparisonRecords } from './experiment-records';
 import summary from './experiment-summary.module.css';
 import styles from '../../components/console-ui.module.css';
 
@@ -98,7 +98,7 @@ export function SavedRunResult({ runId, refreshKey, completed }: { runId: string
             </dl>
           </>}
           {canAnalyze && <>
-            <p id="run-analysis-disclosure">Gemini receives saved HTTP counts, p95 latency, failure ratios, and sampled throughput when available. The analysis is saved in Assistant history.</p>
+            <p id="run-analysis-disclosure">Gemini receives saved HTTP metrics and observation lengths. The analysis is saved in Assistant history.</p>
             <Button variant="secondary" busy={analyzing === 'single'} disabled={analyzing === 'comparison'}
               aria-describedby="run-analysis-disclosure" onClick={() => void analyze()}>
               {analyzing === 'single' ? 'Analyzing saved results…' : analysisError && !analysisError.comparisonRunId ? 'Retry analysis' : 'Analyze with Gemini'}
@@ -107,7 +107,7 @@ export function SavedRunResult({ runId, refreshKey, completed }: { runId: string
             {completed && (whole?.summary?.httpRequests ?? 0) > 0 && <details className={summary.disclosure}
               onToggle={event => { if (event.currentTarget.open) setComparisonOpened(true); }}>
               <summary>Compare with another run</summary>
-              {comparisonOpened && <RunComparisonPicker baseline={runId} busy={analyzing === 'comparison'} disabled={Boolean(analyzing)}
+              {comparisonOpened && <RunComparisonPicker key={runId} baseline={runId} busy={analyzing === 'comparison'} disabled={Boolean(analyzing)}
                 error={analysisError?.comparisonRunId ? analysisError : undefined} analyze={id => void analyze(id)} />}
             </details>}
           </>}
@@ -119,27 +119,28 @@ export function SavedRunResult({ runId, refreshKey, completed }: { runId: string
 function RunComparisonPicker({ baseline, busy, disabled, error, analyze }: {
   baseline: string; busy: boolean; disabled: boolean; error?: { comparisonRunId?: string; message: string }; analyze: (id: string) => void;
 }) {
-  const runs = useExperimentRecords('RUNS');
+  const runs = useRunComparisonRecords(baseline);
   const [selected, setSelected] = useState('');
-  const options = runs.items.filter(run => run.id !== baseline && run.status === 'COMPLETED');
   const currentError = selected && error?.comparisonRunId === selected ? error.message : '';
   return <div className={controls.field}>
-    <label htmlFor="analysis-comparison-run">Comparison run</label>
+    {runs.items.length > 0 && <><label htmlFor="analysis-comparison-run">Comparison run</label>
     <select id="analysis-comparison-run" className={controls.input} value={selected} disabled={disabled}
       aria-describedby="run-comparison-disclosure" onChange={event => setSelected(event.target.value)}>
-      <option value="">Choose another completed run</option>
-      {options.map(run => <option key={run.id} value={run.id}>
+      <option value="">Choose a compatible run</option>
+      {runs.items.map(run => <option key={run.id} value={run.id}>
         {run.targetName ?? 'Unnamed system'} · {recordLabel(run)} · {new Date(run.listedAt).toLocaleString()}
       </option>)}
-    </select>
-    {runs.loading && <p role="status">Loading runs…</p>}
+    </select></>}
+    {runs.loading && <p role="status">Checking compatible runs…</p>}
     {runs.error && <><Notice title="Cannot load runs" tone="error">{runs.error}</Notice>
       <div><Button variant="secondary" onClick={runs.retry}>Retry runs</Button></div></>}
     {runs.hasMore && !runs.loading && !runs.error && <div><Button variant="secondary" onClick={runs.more}>Load older runs</Button></div>}
-    {!runs.loading && !runs.error && !options.length && !runs.hasMore && <p>No other completed runs are available.</p>}
-    <p id="run-comparison-disclosure">Choose a run with matching saved inputs. Gemini receives each whole-run HTTP summary and the shared requested rate.</p>
-    <div><Button variant="secondary" busy={busy} disabled={!selected || disabled} aria-describedby="run-comparison-disclosure"
-      onClick={() => analyze(selected)}>{busy ? 'Comparing saved results…' : currentError ? 'Retry comparison' : 'Compare with Gemini'}</Button></div>
+    {!runs.loading && !runs.error && !runs.items.length && <p>{runs.hasMore
+      ? 'No compatible runs on this page. Load older runs to keep looking.'
+      : 'No completed runs share these inputs and have a usable whole-run summary.'}</p>}
+    <p id="run-comparison-disclosure">Gemini receives both whole-run HTTP summaries and the shared requested rate. This comparison uses historical evidence.</p>
+    {runs.items.length > 0 && <div><Button variant="secondary" busy={busy} disabled={!selected || disabled} aria-describedby="run-comparison-disclosure"
+      onClick={() => analyze(selected)}>{busy ? 'Comparing saved results…' : currentError ? 'Retry comparison' : 'Compare with Gemini'}</Button></div>}
     {currentError && <Notice title="Cannot compare these runs" tone="error">{currentError}</Notice>}
   </div>;
 }

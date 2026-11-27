@@ -96,7 +96,7 @@ export function ScriptDraftAssistant({ source, version, disabled, apply }: {
         <textarea id="script-draft-goal" className={controls.input} value={goal} readOnly={disabled || busy} rows={3} maxLength={2000}
           placeholder="Example: GET and check for HTTP 200." aria-describedby="script-draft-sharing"
           onChange={event => { setGoal(event.target.value); clearPreview(); }} />
-        <span id="script-draft-sharing" className={controls.hint}>Gemini receives your goal text. Loadpilot adds the registered URL locally. Keep URLs and credentials out of the goal.</span>
+        <span id="script-draft-sharing" className={controls.hint}>Gemini receives your goal text. Loadpilot adds the registered URL locally. Set steady, ramp, or spike load in Experiment Setup. Keep URLs and credentials out of the goal.</span>
       </div>
       <div className={styles.actions}><Button className={styles.compactButton} variant="secondary" busy={busy}
         disabled={disabled || !targetId || !validTimeout || !goal.trim()} onClick={() => void requestDraft()}>

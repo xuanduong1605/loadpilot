@@ -1,4 +1,4 @@
-import type { EvidenceId, RunAnalysis } from './assistant-data';
+import { providerIssueMessage, type EvidenceId, type RunAnalysis } from './assistant-data';
 import styles from './assistant.module.css';
 
 const evidenceLabel = { WHOLE_RUN: 'Whole-run k6 summary', PARTIAL_HTTP: 'Partial HTTP window',
@@ -8,11 +8,11 @@ const percent = new Intl.NumberFormat(undefined, { style: 'percent', maximumFrac
 const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'medium' });
 const label = (state: string) => state.toLowerCase().replaceAll('_', ' ');
 
-export function AssistantRunReport({ id, report }: { id: string; report: RunAnalysis }) {
+export function AssistantRunReport({ id, report, onAsk, disabled }: { id: string; report: RunAnalysis; onAsk: () => void; disabled: boolean }) {
   const evidenceAnchor = (scope: EvidenceId) => `evidence-${id}-${scope.toLowerCase()}`;
   const scopeLabel = (scope: EvidenceId) => report.comparison && scope === 'WHOLE_RUN' ? 'Baseline whole-run summary' : evidenceLabel[scope];
   return <section className={styles.runReport} aria-labelledby={`analysis-${id}`}>
-    <h2 id={`analysis-${id}`}>{report.comparison ? 'Run comparison' : 'Run analysis'}</h2>
+    <h2 id={`analysis-${id}`} tabIndex={-1}>{report.comparison ? 'Historical run comparison' : 'Run analysis'}</h2>
     <dl className={styles.runObservations}>
       <div><dt>{report.comparison ? 'Baseline status' : 'Run status'}</dt><dd>{label(report.runStatus)}</dd></div>
       <div><dt>{report.comparison ? 'Baseline SLO verdict' : 'Recorded SLO verdict'}</dt><dd>{label(report.verdict)}</dd></div>
@@ -21,7 +21,7 @@ export function AssistantRunReport({ id, report }: { id: string; report: RunAnal
         <div><dt>Comparison SLO verdict</dt><dd>{label(report.comparison.verdict)}</dd></div>
       </>}
     </dl>
-    {report.comparison && <p className={styles.reportNotice}>Both runs requested {number.format(report.comparison.requestedIterationsPerSecond)} iterations/s during measurement. Achieved load is unverified.</p>}
+    {report.comparison && <p className={styles.reportNotice}>Both runs requested {number.format(report.comparison.requestedIterationsPerSecond)} iterations/s. Achieved load is unverified. Resource recommendations require aligned measurement windows and resource evidence.</p>}
     {report.observations.length > 0 && <>
       <h3>Saved observations</h3>
       <p>{report.comparison ? 'The historical summaries include warm-up. An SLO verdict requires validated measurement-window evidence.'
@@ -38,7 +38,7 @@ export function AssistantRunReport({ id, report }: { id: string; report: RunAnal
       </section>)}
     </>}
     {report.status === 'INSUFFICIENT_DATA' && <p className={styles.reportNotice}>Insufficient data for AI findings.</p>}
-    {report.status === 'PROVIDER_UNAVAILABLE' && <p className={styles.reportNotice}>Gemini analysis is temporarily unavailable. Saved observations are still available.</p>}
+    {report.status === 'PROVIDER_UNAVAILABLE' && <p className={styles.reportNotice}>{providerIssueMessage(report.providerIssue)} Saved observations are still available.</p>}
     {report.status === 'READY' && <>
       <h3>Gemini hypotheses and checks</h3>
       {report.findings.length ? <ul className={styles.runFindings}>{report.findings.map((finding, index) => <li key={index}>
@@ -48,5 +48,8 @@ export function AssistantRunReport({ id, report }: { id: string; report: RunAnal
           <li key={scope}><a href={`#${evidenceAnchor(scope)}`}>{scopeLabel(scope)}</a></li>)}</ul>
       </li>)}</ul> : <p>The saved evidence did not support a specific hypothesis.</p>}
     </>}
+    {report.observations.length > 0 && <div className={styles.replyActions}>
+      <button type="button" disabled={disabled} onClick={onAsk}>Ask about this report</button>
+    </div>}
   </section>;
 }

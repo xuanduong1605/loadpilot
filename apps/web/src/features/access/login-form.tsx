@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, accessPost, returnPath } from '../../lib/api';
 import { Button, Notice, TextField } from '../../components/form-controls';
+import { BrowserTransportNotice } from '../../components/browser-transport-notice';
 import { Icon } from '../../components/icon';
 import styles from './login.module.css';
 
@@ -68,6 +69,7 @@ export function LoginForm() {
       </div>
       {/* Unnamed inputs prevent accidental native GET submission when JavaScript is unavailable. */}
       <form className={styles.form} onSubmit={submit} noValidate aria-describedby="login-note" aria-busy={pending}>
+        <BrowserTransportNotice className={styles.accessHelp} />
         {(errors.username || errors.password) && <Notice title="Check the highlighted fields" tone="error">Enter both fields to sign in.</Notice>}
         {feedback && <Notice id="login-error" title="Unable to sign in" tone="error">{feedback.message}</Notice>}
         <TextField id="login-username" label="Username" required maxLength={128} disabled={pending}
