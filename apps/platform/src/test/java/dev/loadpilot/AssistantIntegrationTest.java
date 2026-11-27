@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {
         "platform.username=admin", "platform.password=integration-test-password-123",
+        "GEMINI_API_KEY=fixture-gemini-credential",
         "spring.datasource.url=${TEST_DATABASE_URL:jdbc:postgresql://127.0.0.1:5432/loadpilot_test}",
         "spring.datasource.username=${TEST_DATABASE_USER:loadpilot_test}", "spring.datasource.password=${TEST_DATABASE_PASSWORD}"})
 @AutoConfigureMockMvc
@@ -65,6 +66,10 @@ class AssistantIntegrationTest {
         UUID id = UUID.randomUUID();
         var secret = new Message(UUID.randomUUID(), 0, "password=synthetic-example", Task.SCRIPT, null);
         mvc.perform(send(id, secret)).andExpect(status().isBadRequest());
+        mvc.perform(send(id, new Message(UUID.randomUUID(), 0, "Please check fixture-gemini-credential", Task.SCRIPT, null)))
+                .andExpect(status().isBadRequest());
+        mvc.perform(send(id, new Message(UUID.randomUUID(), 0, "AIza" + "x".repeat(35), Task.ASK, null)))
+                .andExpect(status().isBadRequest());
         mvc.perform(post(CHATS + "/" + id + "/messages").contentType("application/json").content(json.writeValueAsString(secret)))
                 .andExpect(status().isForbidden());
         mvc.perform(get(CHATS + "/" + id)).andExpect(status().isNotFound());
@@ -83,7 +88,7 @@ class AssistantIntegrationTest {
         mvc.perform(send(id, new Message(UUID.randomUUID(), 2, "How could I revise it?", Task.SCRIPT, null)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.turn.reply.providerUnavailable").value(true))
                 .andExpect(jsonPath("$.turn.reply.links[1].destination").value("SCRIPT_EDITOR"));
-        verify(provider, times(2)).advise(argThat(context -> !context.recent().isEmpty()
+        verify(provider, times(2)).advise(argThat(context -> context.recent().size() == 1
                 && context.recent().getFirst().question().equals(question.text())));
     }
 

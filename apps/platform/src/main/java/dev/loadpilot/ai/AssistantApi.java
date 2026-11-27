@@ -58,7 +58,7 @@ public class AssistantApi {
     public Sent send(@PathVariable UUID id, @Valid @RequestBody Message request, Principal actor) {
         if (request.text().codePoints().anyMatch(cp -> Character.isISOControl(cp) && cp != '\n' && cp != '\r' && cp != '\t'))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Remove control characters from the message.");
-        if (AssistantSuggestions.containsCredentials(request.text()))
+        if (suggestions.containsCredentials(request.text()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Remove credentials from your message before sending it.");
         var state = history.inspect(id, actor.getName(), request);
         if (state.replay() != null) return state.replay();

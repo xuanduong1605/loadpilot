@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -14,27 +15,32 @@ class AssistantSuggestions {
     private static final Pattern SENSITIVE = Pattern.compile(
             "(?i)-----BEGIN [^-\\r\\n]{0,48}PRIVATE KEY-----|\\b(?:bearer|basic)\\s+[a-z0-9+/=_.-]{8,}"
             + "|\\b(?:[a-z0-9]+_)*(?:password|passwd|token|secret|api[_ -]?key)[\"']?\\s*[:=]"
-            + "|\\bsk-[a-z0-9_-]{12,}|https?://[^\\s/]+@");
+            + "|\\bsk-[a-z0-9_-]{12,}|\\bAIza[a-z0-9_-]{35}(?![a-z0-9_-])|https?://[^\\s/]+@");
     private final AssistantProvider provider;
+    private final String geminiKey;
     private final ExecutorService calls = new ThreadPoolExecutor(0, 2, 30, TimeUnit.SECONDS,
             new SynchronousQueue<>(), Thread.ofVirtual().name("assistant-provider-", 0).factory());
 
-    AssistantSuggestions(ObjectProvider<AssistantProvider> providers) {
+    AssistantSuggestions(ObjectProvider<AssistantProvider> providers, @Value("${GEMINI_API_KEY:}") String geminiKey) {
         provider = providers.getIfUnique();
+        this.geminiKey = geminiKey.strip();
     }
 
     record Suggestion(String text, boolean unavailable) {}
 
     boolean available() { return provider != null; }
 
-    static boolean containsCredentials(String text) { return SENSITIVE.matcher(text).find(); }
+    boolean containsCredentials(String text) {
+        return SENSITIVE.matcher(text).find() || (!geminiKey.isEmpty() && text.contains(geminiKey));
+    }
 
     Suggestion suggest(Message message, AssistantGuide.Answer guidance, List<Turn> recent) {
         if (provider == null || !guidance.offerAdvice())
             return new Suggestion(null, false);
         var context = recent.stream()
                 .filter(turn -> turn.task() == message.task() && java.util.Objects.equals(turn.recordId(), message.recordId())
-                        && !containsCredentials(turn.text()))
+                        && !containsCredentials(turn.text())
+                        && turn.reply().suggestion() != null && !containsCredentials(turn.reply().suggestion()))
                 .map(turn -> new AssistantProvider.Exchange(turn.text(), turn.reply().suggestion()))
                 .toList();
         var request = new AssistantProvider.Request(message.task(), message.text(), guidance.facts(), context);
