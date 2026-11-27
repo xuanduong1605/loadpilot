@@ -155,6 +155,11 @@ class AssistantIntegrationTest {
 
     @Test void previewsStructuredSettingsWithoutChangingSavedInputs() throws Exception {
         UUID run = completedRun();
+        db.update("""
+                INSERT INTO experiment_draft(id,target_id,settings,created_by)
+                VALUES (?,?,'{"maximumRate":10}','admin')
+                """, UUID.randomUUID(), targetId(run));
+        long turnsBefore = db.queryForObject("SELECT count(*) FROM assistant_turn", Long.class);
         String goal = "Raise the maximum rate to 20 iterations/s and set p99 to 175 ms.";
         when(provider.proposeSettings(eq(goal), any())).thenReturn("""
                 {"changes":[{"field":"maximumRate","value":20},{"field":"latencyPercentile","value":99},
@@ -169,9 +174,14 @@ class AssistantIntegrationTest {
                 .andExpect(jsonPath("$.preview.sloPolicy.latencyPercentile").value("P99"))
                 .andExpect(jsonPath("$.preview.sloPolicy.latencyThresholdMs").value(175))
                 .andExpect(jsonPath("$.preview.executionBounds.generatorMemoryMiB").value(128));
-        assertThat(db.queryForObject("SELECT settings FROM experiment_draft WHERE created_by = 'admin'", String.class)).isEqualTo("{}");
+        assertThat(db.queryForObject("""
+                SELECT draft.settings FROM experiment_run run
+                JOIN experiment_input_snapshot snapshot ON snapshot.id = run.snapshot_id
+                JOIN experiment_draft draft ON draft.id = snapshot.draft_id
+                WHERE run.id = ?
+                """, String.class, run)).isEqualTo("{}");
         assertThat(db.queryForObject("SELECT status FROM experiment_run WHERE id = ?", String.class, run)).isEqualTo("COMPLETED");
-        assertThat(db.queryForObject("SELECT count(*) FROM assistant_turn", Integer.class)).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM assistant_turn", Long.class)).isEqualTo(turnsBefore);
         verify(provider).proposeSettings(eq(goal), argThat(schema -> schema.at("/properties/changes/items/properties/field/enum")
                 .toString().contains("maximumRate")));
     }
@@ -191,6 +201,7 @@ class AssistantIntegrationTest {
     }
 
     @Test void proposesOnlyMentionedFieldsWithoutACompletedSettingsForm() throws Exception {
+        long turnsBefore = db.queryForObject("SELECT count(*) FROM assistant_turn", Long.class);
         String goal = "Use at most 20 iterations/s and a 2% error ratio.";
         when(provider.proposeSettings(eq(goal), any())).thenReturn("""
                 {"changes":[{"field":"maximumRate","value":20},{"field":"maximumErrorRatio","value":0.02}]}
@@ -201,7 +212,7 @@ class AssistantIntegrationTest {
                 .andExpect(jsonPath("$.changes[1].value").value(0.02))
                 .andExpect(jsonPath("$.errors.length()").value(0))
                 .andExpect(jsonPath("$.preview").doesNotExist());
-        assertThat(db.queryForObject("SELECT count(*) FROM assistant_turn", Integer.class)).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM assistant_turn", Long.class)).isEqualTo(turnsBefore);
     }
 
     @Test void checksFieldBoundsWithoutACompletedSettingsForm() throws Exception {
