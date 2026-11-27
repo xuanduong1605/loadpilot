@@ -58,11 +58,11 @@ class GeminiAssistantProviderTest {
         try (var fixture = new Fixture(); var assistant = fixture.provider()) {
             fixture.status.set(429);
             fixture.reply.set(KEY);
-            assertUnavailable(assistant);
+            assertIssue(assistant, AssistantProvider.Issue.BUSY);
             fixture.status.set(302);
-            assertUnavailable(assistant);
+            assertIssue(assistant, AssistantProvider.Issue.UNAVAILABLE);
             fixture.status.set(503);
-            assertUnavailable(assistant);
+            assertIssue(assistant, AssistantProvider.Issue.UNAVAILABLE);
             fixture.status.set(200);
             for (String body : List.of("", "invalid json", "{}", "x".repeat(64 * 1024 + 1), """
                     {"candidates":[{"finishReason":"MAX_TOKENS","content":{"parts":[{"text":"truncated"}]}}]}
@@ -70,7 +70,7 @@ class GeminiAssistantProviderTest {
                     {"candidates":[{"finishReason":"STOP","content":{"parts":[{"functionCall":{"name":"start"}}]}}]}
                     """)) {
                 fixture.reply.set(body);
-                assertUnavailable(assistant);
+                assertIssue(assistant, AssistantProvider.Issue.INVALID_RESPONSE);
             }
             assertThat(fixture.calls.get()).isEqualTo(9);
         }
@@ -96,7 +96,7 @@ class GeminiAssistantProviderTest {
         try (var fixture = new Fixture(); var assistant = fixture.provider()) {
             fixture.reply.set("The provider will stall before this body.");
             fixture.stallBody.set(true);
-            assertUnavailable(assistant);
+            assertIssue(assistant, AssistantProvider.Issue.TIMEOUT);
             assertThat(fixture.calls.get()).isOne();
         }
     }
@@ -106,9 +106,9 @@ class GeminiAssistantProviderTest {
                 List.of(new AssistantProvider.Exchange("How do I start?", "Use finite phases.")));
     }
 
-    private static void assertUnavailable(AssistantProvider assistant) {
-        assertThatThrownBy(() -> assistant.advise(question())).isInstanceOf(IOException.class)
-                .hasMessage("Gemini did not return a usable reply.").hasNoCause();
+    private static void assertIssue(AssistantProvider assistant, AssistantProvider.Issue issue) {
+        assertThatThrownBy(() -> assistant.advise(question())).hasNoCause()
+                .isInstanceOfSatisfying(AssistantProvider.ProviderFailure.class, failure -> assertThat(failure.issue()).isEqualTo(issue));
     }
 
     private class Fixture implements AutoCloseable {

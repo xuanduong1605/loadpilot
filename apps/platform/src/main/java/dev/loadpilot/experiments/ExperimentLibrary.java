@@ -13,6 +13,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/experiments/library")
 public class ExperimentLibrary {
+    private static final String RUN_ENTRIES = """
+            SELECT r.id, s.inputs_json::jsonb #>> '{target,name}' AS target_name,
+                   s.inputs_json::jsonb #>> '{scenario,script,name}' AS script_name,
+                   (s.inputs_json::jsonb #>> '{scenario,script,version}')::integer AS script_version,
+                   r.revision, r.status, r.created_at AS listed_at
+            FROM experiment_run r
+            JOIN experiment_input_snapshot s ON s.id = r.snapshot_id
+            WHERE r.created_by = ?
+            """;
+    private static final String RUN_ORDER = "ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?";
     public enum Kind { DRAFTS, SNAPSHOTS, RUNS }
 
     public record Entry(UUID id, String targetName, String scriptName, Integer scriptVersion,
@@ -49,22 +59,23 @@ public class ExperimentLibrary {
                 ORDER BY s.created_at DESC, s.id DESC
                 LIMIT ? OFFSET ?
                 """;
-            case RUNS -> """
-                SELECT r.id, s.inputs_json::jsonb #>> '{target,name}' AS target_name,
-                       s.inputs_json::jsonb #>> '{scenario,script,name}' AS script_name,
-                       (s.inputs_json::jsonb #>> '{scenario,script,version}')::integer AS script_version,
-                       r.revision, r.status, r.created_at AS listed_at
-                FROM experiment_run r
-                JOIN experiment_input_snapshot s ON s.id = r.snapshot_id
-                WHERE r.created_by = ?
-                ORDER BY r.created_at DESC, r.id DESC
-                LIMIT ? OFFSET ?
-                """;
+            case RUNS -> RUN_ENTRIES + RUN_ORDER;
         };
+        return page(query, limit, operator.getName(), limit + 1, offset);
+    }
+
+    public Page comparisonPage(String operator, UUID baseline, UUID target, int offset, int limit) {
+        return page(RUN_ENTRIES + """
+                AND r.id <> ? AND r.target_id = ? AND r.status = 'COMPLETED'
+                AND EXISTS (SELECT 1 FROM experiment_worker_result result WHERE result.run_id = r.id)
+                """ + RUN_ORDER, limit, operator, baseline, target, limit + 1, offset);
+    }
+
+    private Page page(String query, int limit, Object... parameters) {
         var entries = db.query(query, (row, index) -> new Entry(row.getObject("id", UUID.class),
                 row.getString("target_name"), row.getString("script_name"), row.getObject("script_version", Integer.class),
                 row.getLong("revision"), row.getString("status"), row.getObject("listed_at", OffsetDateTime.class)),
-                operator.getName(), limit + 1, offset);
+                parameters);
         return new Page(entries.subList(0, Math.min(limit, entries.size())), entries.size() > limit);
     }
 }

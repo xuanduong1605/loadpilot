@@ -6,20 +6,24 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import dev.loadpilot.ai.AssistantProvider.Issue;
 import dev.loadpilot.experiments.ExperimentSnapshots.Inputs;
 import dev.loadpilot.experiments.RunResults;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 class AssistantRunAnalysis {
+    private static final Pattern RESOURCE_TUNING = Pattern.compile("(?iu)\\b(?:cpus?|vcpus?|replicas?|mCPU|millicores?)\\b");
     enum Status { READY, INSUFFICIENT_DATA, PROVIDER_UNAVAILABLE }
     enum EvidenceId { WHOLE_RUN, PARTIAL_HTTP, COMPARISON_WHOLE_RUN }
 
@@ -28,7 +32,8 @@ class AssistantRunAnalysis {
     record Finding(String hypothesis, String suggestedCheck, List<EvidenceId> evidenceIds) {}
     record Comparison(UUID runId, String runStatus, String verdict, int requestedIterationsPerSecond) {}
     record Report(Status status, String runStatus, String verdict, List<Observation> observations, List<Finding> findings,
-                  @JsonInclude(JsonInclude.Include.NON_NULL) Comparison comparison) {}
+                  @JsonInclude(JsonInclude.Include.NON_NULL) Comparison comparison,
+                  @JsonInclude(JsonInclude.Include.NON_NULL) Issue providerIssue) {}
 
     private final ObjectMapper json;
     private final AssistantSuggestions suggestions;
@@ -38,13 +43,13 @@ class AssistantRunAnalysis {
         this.suggestions = suggestions;
     }
 
-    Report analyze(RunResults.View view) {
+    Report analyze(String operator, RunResults.View view) {
         List<Observation> observations = observations(view);
         if (observations.isEmpty()) return report(Status.INSUFFICIENT_DATA, view, observations, List.of(), null);
-        return askProvider(view, observations, null);
+        return askProvider(operator, view, observations, null);
     }
 
-    Report compare(RunResults.View baseline, RunResults.View candidate, Inputs first, Inputs second) {
+    Report compare(String operator, RunResults.View baseline, RunResults.View candidate, Inputs first, Inputs second) {
         if (!comparable(first, second)) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "Choose runs with the same registered system revision, script content, requested load, and measurement and execution settings.");
         var comparison = new Comparison(candidate.runId(), candidate.status(), candidate.verdict(), first.measurementRate());
@@ -55,10 +60,10 @@ class AssistantRunAnalysis {
         if (observations.size() != 2 || !"COMPLETED".equals(baseline.status()) || !"COMPLETED".equals(candidate.status())) {
             return report(Status.INSUFFICIENT_DATA, baseline, observations, List.of(), comparison);
         }
-        return askProvider(baseline, observations, comparison);
+        return askProvider(operator, baseline, observations, comparison);
     }
 
-    private static boolean comparable(Inputs first, Inputs second) {
+    static boolean comparable(Inputs first, Inputs second) {
         return comparisonInput(first) && comparisonInput(second)
                 && first.target().equals(second.target()) && first.scenario().script().sha256().equals(second.scenario().script().sha256())
                 && first.measurementRate().equals(second.measurementRate()) && first.measurementSeconds() == second.measurementSeconds()
@@ -76,27 +81,40 @@ class AssistantRunAnalysis {
                 && input.loadProfile() != null && input.executionBounds() != null && input.sloPolicy() != null;
     }
 
-    private Report askProvider(RunResults.View view, List<Observation> observations, Comparison comparison) {
+    private Report askProvider(String operator, RunResults.View view, List<Observation> observations, Comparison comparison) {
+        var evidence = evidence(observations, comparison);
+        var allowedIds = observations.stream().map(Observation::id).toList();
+        var reply = suggestions.analyzeRun(operator, evidence, schema(allowedIds, comparison != null));
+        Issue issue = reply.issue();
+        if (issue == null) {
+            try {
+                return report(Status.READY, view, observations, findings(reply.text(), allowedIds, comparison != null), comparison);
+            } catch (JsonProcessingException | IllegalArgumentException invalid) {
+                // Provider output is untrusted. Preserve the saved observations without its findings.
+                issue = Issue.INVALID_RESPONSE;
+            }
+        }
+        return new Report(Status.PROVIDER_UNAVAILABLE, view.status(), view.verdict(), observations, List.of(), comparison, issue);
+    }
 
+    ObjectNode followUp(Report report) {
+        var context = evidence(report.observations(), report.comparison());
+        context.set("findings", json.valueToTree(report.findings()));
+        return context;
+    }
+
+    private ObjectNode evidence(List<Observation> observations, Comparison comparison) {
         var evidence = json.createObjectNode();
         if (comparison != null) evidence.put("requestedIterationsPerSecond", comparison.requestedIterationsPerSecond());
         var metrics = evidence.putArray("observations");
         for (var item : observations) {
             var observation = metrics.addObject().put("id", item.id().name())
+                    .put("windowSeconds", Duration.between(item.from(), item.until()).toMillis() / 1000.0)
                     .put("httpRequests", item.httpRequests()).put("p95LatencyMs", item.p95LatencyMs())
                     .put("httpFailureRatio", item.httpFailureRatio());
             if (item.httpRequestsPerSecond() != null) observation.put("httpRequestsPerSecond", item.httpRequestsPerSecond());
         }
-        var allowedIds = observations.stream().map(Observation::id).toList();
-        String reply = suggestions.analyzeRun(evidence, schema(allowedIds, comparison != null));
-        if (reply != null) {
-            try {
-                return report(Status.READY, view, observations, findings(reply, allowedIds, comparison != null), comparison);
-            } catch (JsonProcessingException | IllegalArgumentException invalid) {
-                // Provider output is untrusted. Preserve the saved observations without its findings.
-            }
-        }
-        return report(Status.PROVIDER_UNAVAILABLE, view, observations, List.of(), comparison);
+        return evidence;
     }
 
     private static List<Observation> observations(RunResults.View view) {
@@ -114,8 +132,16 @@ class AssistantRunAnalysis {
     }
 
     private static Optional<Observation> wholeObservation(RunResults.View view, EvidenceId id) {
-        if (view.result() != null && "AVAILABLE".equals(view.resultState())) {
-            var evidence = view.result().evidence();
+        return "AVAILABLE".equals(view.resultState()) ? wholeObservation(view.result(), id) : Optional.empty();
+    }
+
+    static boolean usableWhole(RunResults.Saved result) {
+        return wholeObservation(result, EvidenceId.WHOLE_RUN).isPresent();
+    }
+
+    private static Optional<Observation> wholeObservation(RunResults.Saved result, EvidenceId id) {
+        if (result != null && "AVAILABLE".equals(result.evidence().availability())) {
+            var evidence = result.evidence();
             var summary = evidence.summary();
             if (summary != null && summary.httpRequests() != null && summary.httpRequests() > 0
                     && summary.httpDurationMs() != null && nonnegative(summary.httpDurationMs().p95())
@@ -163,7 +189,7 @@ class AssistantRunAnalysis {
 
     private String text(JsonNode node) {
         String value = node.isTextual() ? node.textValue().strip() : "";
-        if (value.isEmpty() || value.length() > 280 || suggestions.containsCredentials(value)
+        if (value.isEmpty() || value.length() > 280 || suggestions.containsCredentials(value) || RESOURCE_TUNING.matcher(value).find()
                 || value.codePoints().anyMatch(Character::isISOControl)) throw invalid();
         return value;
     }
@@ -187,6 +213,6 @@ class AssistantRunAnalysis {
     private static IllegalArgumentException invalid() { return new IllegalArgumentException("Invalid run analysis response."); }
 
     private static Report report(Status status, RunResults.View view, List<Observation> observations, List<Finding> findings, Comparison comparison) {
-        return new Report(status, view.status(), view.verdict(), observations, findings, comparison);
+        return new Report(status, view.status(), view.verdict(), observations, findings, comparison, null);
     }
 }

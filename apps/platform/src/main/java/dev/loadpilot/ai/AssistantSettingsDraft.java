@@ -18,6 +18,7 @@ import jakarta.validation.constraints.Size;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.security.Principal;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -51,15 +52,13 @@ class AssistantSettingsDraft {
     private record Setting(String section, String property, Class<?> formType) {}
 
     @PostMapping("/api/assistant/settings-draft")
-    Proposal draft(@Valid @RequestBody Input input) {
+    Proposal draft(@Valid @RequestBody Input input, Principal operator) {
         String goal = input.goal().strip();
         if (suggestions.containsCredentials(goal) || goal.codePoints().anyMatch(cp -> Character.isISOControl(cp)
                 && cp != '\n' && cp != '\r' && cp != '\t')) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Remove credentials and control characters from the goal.");
         }
-        String result = suggestions.proposeSettings(goal, schema());
-        if (result == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                "AI settings suggestions are unavailable. Continue editing manually or try again later.");
+        String result = suggestions.proposeSettings(operator.getName(), goal, schema()).require("Continue editing manually or try again later.");
 
         ObjectNode proposed = input.current() == null ? null : json.valueToTree(input.current());
         List<Change> changes = new ArrayList<>();
@@ -90,6 +89,13 @@ class AssistantSettingsDraft {
             List<Change> reviewedChanges = List.copyOf(changes);
             if (!fieldErrors.isEmpty()) return new Proposal(reviewedChanges, null, fieldErrors.stream().sorted().toList());
             if (proposed == null) return new Proposal(reviewedChanges, null, List.of());
+            var load = input.current().loadProfile();
+            if (seen.contains("durationSeconds") && load.mode() == LoadProfile.Mode.SINGLE_RUN
+                    && load.shape() == LoadProfile.Shape.STEADY && load.stages().size() == 1) {
+                // The form derives the single steady stage from the experiment duration.
+                var stage = (ObjectNode) proposed.path("loadProfile").path("stages").get(0);
+                stage.set("durationSeconds", proposed.path("settings").path("durationSeconds"));
+            }
             EffectiveInput candidate = json.treeToValue(proposed, EffectiveInput.class);
             var violations = validator.validate(candidate).stream()
                     .map(error -> error.getPropertyPath() + " " + error.getMessage()).sorted().toList();

@@ -1,6 +1,9 @@
 package dev.loadpilot.ai;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import dev.loadpilot.ai.AssistantProvider.Issue;
+import dev.loadpilot.experiments.ExperimentLibrary;
+import dev.loadpilot.experiments.RunResults;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.security.Principal;
@@ -15,12 +18,14 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/assistant")
 public class AssistantApi {
-    public enum Task { ASK, SCRIPT, STATUS, START, RESULT, EDIT }
+    public enum Task { ASK, SCRIPT, STATUS, START, RESULT, EDIT, REPORT }
     public enum Destination { SYSTEMS, SCRIPTS, SCRIPT_EDITOR, RUNS, RUN_MONITOR, RUN_EVIDENCE, INPUTS, INPUT_REVIEW, SETUP }
 
     public record Link(Destination destination, UUID recordId, Integer version, String label) {}
     public record Reply(String text, List<Link> links, String suggestion, boolean providerUnavailable,
-                        @JsonInclude(JsonInclude.Include.NON_NULL) AssistantRunAnalysis.Report analysis) {}
+                        @JsonInclude(JsonInclude.Include.NON_NULL) AssistantRunAnalysis.Report analysis,
+                        @JsonInclude(JsonInclude.Include.NON_NULL) Issue providerIssue,
+                        @JsonInclude(JsonInclude.Include.NON_NULL) Boolean reportFollowUp) {}
     public record Message(@NotNull UUID requestId, @NotNull @Min(0) @Max(50) Integer expectedTurns,
                           @NotBlank @Size(max = 2000) String text, @NotNull Task task, UUID recordId) {}
     public record AnalysisRequest(@NotNull UUID requestId, @NotNull @Min(0) @Max(50) Integer expectedTurns,
@@ -41,12 +46,17 @@ public class AssistantApi {
     private final AssistantGuide guide;
     private final AssistantSuggestions suggestions;
     private final AssistantRunAnalysis runAnalysis;
+    private final ExperimentLibrary library;
+    private final RunResults results;
 
-    public AssistantApi(AssistantHistory history, AssistantGuide guide, AssistantSuggestions suggestions, AssistantRunAnalysis runAnalysis) {
+    public AssistantApi(AssistantHistory history, AssistantGuide guide, AssistantSuggestions suggestions, AssistantRunAnalysis runAnalysis,
+                        ExperimentLibrary library, RunResults results) {
         this.history = history;
         this.guide = guide;
         this.suggestions = suggestions;
         this.runAnalysis = runAnalysis;
+        this.library = library;
+        this.results = results;
     }
 
     @GetMapping("/capabilities")
@@ -65,18 +75,39 @@ public class AssistantApi {
         return history.conversation(id, actor.getName());
     }
 
+    @GetMapping("/runs/{id}/comparison-options")
+    public ExperimentLibrary.Page comparisonOptions(@PathVariable UUID id, @RequestParam(defaultValue = "0") int offset, Principal actor) {
+        if (offset < 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Use a nonnegative history offset.");
+        String operator = actor.getName();
+        var view = guide.ownedRunResult(id, operator);
+        if (!"COMPLETED".equals(view.status()) || !AssistantRunAnalysis.usableWhole(view.result())) {
+            return new ExperimentLibrary.Page(List.of(), false);
+        }
+        var baseline = guide.runInputs(id);
+        if (!AssistantRunAnalysis.comparable(baseline, baseline)) return new ExperimentLibrary.Page(List.of(), false);
+        var page = library.comparisonPage(operator, id, baseline.target().id(), offset, 20);
+        var eligible = page.items().stream()
+                .filter(entry -> AssistantRunAnalysis.comparable(baseline, guide.runInputs(entry.id()))
+                        && AssistantRunAnalysis.usableWhole(results.saved(entry.id())))
+                .toList();
+        return new ExperimentLibrary.Page(eligible, page.hasMore());
+    }
+
     @PostMapping("/conversations/{id}/messages")
     public Sent send(@PathVariable UUID id, @Valid @RequestBody Message request, Principal actor) {
         if (request.text().codePoints().anyMatch(cp -> Character.isISOControl(cp) && cp != '\n' && cp != '\r' && cp != '\t'))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Remove control characters from the message.");
         if (suggestions.containsCredentials(request.text()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Remove credentials from your message before sending it.");
-        var state = history.inspect(id, actor.getName(), request);
+        String operator = actor.getName();
+        var state = history.inspect(id, operator, request);
         if (state.replay() != null) return replay(state.replay(), false);
-        var answer = guide.answer(request.task(), request.recordId(), request.text(), actor.getName());
-        var suggestion = suggestions.suggest(request, answer, state.recent());
-        var reply = new Reply(answer.text(), answer.links(), suggestion.text(), suggestion.unavailable(), null);
-        return replay(history.append(id, actor.getName(), request, reply), false);
+        var report = request.task() == Task.REPORT ? runAnalysis.followUp(history.report(id, operator, request.recordId())) : null;
+        var answer = guide.answer(request.task(), request.recordId(), request.text(), operator);
+        var suggestion = suggestions.suggest(operator, request, answer, state.recent(), report);
+        var reply = new Reply(answer.text(), answer.links(), suggestion.text(), suggestion.issue() != null, null,
+                suggestion.issue(), report == null ? null : true);
+        return replay(history.append(id, operator, request, reply), false);
     }
 
     @PostMapping("/conversations/{id}/analysis")
@@ -90,8 +121,8 @@ public class AssistantApi {
         var state = history.inspect(id, operator, request);
         if (state.replay() != null) return analysisReplay(state.replay(), comparisonId);
         var view = guide.ownedRunResult(input.runId(), operator);
-        var report = comparing ? runAnalysis.compare(view, guide.ownedRunResult(comparisonId, operator),
-                guide.ownedRunInputs(input.runId(), operator), guide.ownedRunInputs(comparisonId, operator)) : runAnalysis.analyze(view);
+        var report = comparing ? runAnalysis.compare(operator, view, guide.ownedRunResult(comparisonId, operator),
+                guide.runInputs(input.runId()), guide.runInputs(comparisonId)) : runAnalysis.analyze(operator, view);
         var links = comparing ? List.of(new Link(Destination.RUN_EVIDENCE, input.runId(), null, "Open baseline evidence"),
                 new Link(Destination.RUN_EVIDENCE, comparisonId, null, "Open comparison evidence"))
                 : List.of(new Link(Destination.RUN_EVIDENCE, input.runId(), null, "Open run evidence"));
@@ -100,7 +131,7 @@ public class AssistantApi {
                 : (comparing ? "Review the paired historical HTTP observations and each recorded SLO verdict."
                 : "Review the saved HTTP observations and recorded SLO verdict.");
         var reply = new Reply(text, links, null,
-                report.status() == AssistantRunAnalysis.Status.PROVIDER_UNAVAILABLE, report);
+                report.status() == AssistantRunAnalysis.Status.PROVIDER_UNAVAILABLE, report, report.providerIssue(), null);
         return analysisReplay(history.append(id, operator, request, reply), comparisonId);
     }
 

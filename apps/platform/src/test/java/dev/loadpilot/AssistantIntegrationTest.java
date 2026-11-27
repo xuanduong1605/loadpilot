@@ -200,6 +200,27 @@ class AssistantIntegrationTest {
                 .andExpect(jsonPath("$.errors[0]", containsString("Specify the setting")));
     }
 
+    @Test void previewsDurationUsingTheSameDerivedStageAsTheSteadyRunForm() throws Exception {
+        String goal = "Set the duration to 40 seconds.";
+        when(provider.proposeSettings(eq(goal), any())).thenReturn("""
+                {"changes":[{"field":"durationSeconds","value":40}]}
+                """);
+        var current = json.readTree("""
+                {"settings":{"minimumRate":1,"maximumRate":10,"durationSeconds":30,"warmupSeconds":5,
+                "p95LatencyMs":150,"maximumErrorRatio":0.01,"repetitions":1,"maximumRuns":2,"totalBudgetSeconds":120},
+                "executionBounds":{"precisionIterationsPerSecond":null,"preAllocatedVUs":2,"maximumVUs":10,"workerCount":1,
+                "generatorCpuMillicores":250,"generatorMemoryMiB":128,"requestTimeoutMs":500,"startupTimeoutSeconds":10,
+                "gracefulStopSeconds":5,"maximumAttemptsPerRun":1},
+                "loadProfile":{"mode":"SINGLE_RUN","shape":"STEADY","startRate":5,"stages":[{"durationSeconds":30,"targetRate":5}],"measurementSeconds":25},
+                "sloPolicy":{"latencyPercentile":"P95","latencyThresholdMs":150,"maximumErrorRatio":0.01,
+                "successDefinition":"HTTP_200_399_WITHOUT_TRANSPORT_ERROR","resourceConditions":[]}}
+                """);
+        mvc.perform(settingsDraft(json.createObjectNode().put("goal", goal).set("current", current)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.preview.valid").value(true))
+                .andExpect(jsonPath("$.preview.loadProfile.stages[0].durationSeconds").value(40))
+                .andExpect(jsonPath("$.preview.loadProfile.measurementSeconds").value(25));
+    }
+
     @Test void proposesOnlyMentionedFieldsWithoutACompletedSettingsForm() throws Exception {
         long turnsBefore = db.queryForObject("SELECT count(*) FROM assistant_turn", Long.class);
         String goal = "Use at most 20 iterations/s and a 2% error ratio.";
@@ -341,6 +362,57 @@ class AssistantIntegrationTest {
         verifyNoInteractions(provider);
     }
 
+    @Test void resolvesOnlyUniqueOwnedRunNamesAndClarifiesAmbiguity() throws Exception {
+        UUID named = completedRun(), unrelated = completedRun();
+        setRunName(named, "Checkout Nightly");
+        var question = new Message(UUID.randomUUID(), 0, "What is the test status for Checkout Nightly?", Task.ASK, null);
+        mvc.perform(send(UUID.randomUUID(), question)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.turn.reply.links[0].recordId").value(named.toString()));
+        setRunName(unrelated, "Checkout Nightly");
+        mvc.perform(send(UUID.randomUUID(), question)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.turn.reply.text", containsString("Which run do you mean?")))
+                .andExpect(jsonPath("$.turn.reply.links[0].destination").value("RUNS"));
+        mvc.perform(send(UUID.randomUUID(), new Message(UUID.randomUUID(), 0, "What is the test status for Unknown?", Task.ASK, null)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.turn.reply.links[0].destination").value("RUNS"));
+        verifyNoInteractions(provider);
+    }
+
+    private void setRunName(UUID run, String name) {
+        db.update("""
+                UPDATE experiment_input_snapshot SET inputs_json = jsonb_build_object('target', jsonb_build_object('name', ?::text))::text
+                WHERE id = (SELECT snapshot_id FROM experiment_run WHERE id = ?)
+                """, name, run);
+    }
+
+    @Test void groundsReportFollowUpsInAnExplicitReportFromTheSameChat() throws Exception {
+        UUID chat = UUID.randomUUID(), report = UUID.randomUUID(), run = completedRun();
+        doReturn(viewWithPartial(run, 40)).when(runResults).read(run);
+        when(provider.analyzeRun(any(), any())).thenReturn("""
+                {"findings":[{"hypothesis":"A transient delay is possible.","suggestedCheck":"Inspect a comparable window.",
+                "evidenceIds":["PARTIAL_HTTP"]}]}
+                """);
+        mvc.perform(analyze(chat, report, run)).andExpect(status().isOk());
+        String question = "Can you explain that diagnosis?";
+        when(provider.advise(any())).thenReturn("The partial window supports a hypothesis about a short delay.");
+        var followUp = new Message(UUID.randomUUID(), 1, question, Task.REPORT, report);
+        mvc.perform(send(chat, followUp))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.turn.reply.suggestion", containsString("partial window")));
+        mvc.perform(send(chat, followUp)).andExpect(status().isOk()).andExpect(jsonPath("$.turn.task").value("REPORT"));
+        assertThat(db.queryForObject("SELECT task FROM assistant_turn WHERE conversation_id = ? AND request_id = ?",
+                String.class, chat, followUp.requestId())).isEqualTo("ASK");
+        mvc.perform(send(UUID.randomUUID(), new Message(UUID.randomUUID(), 0, question, Task.REPORT, report)))
+                .andExpect(status().isNotFound());
+        addOtherOperator();
+        mvc.perform(send(chat, new Message(UUID.randomUUID(), 2, question, Task.REPORT, report))
+                .with(user("other-operator").roles("OPERATOR"))).andExpect(status().isNotFound());
+        verify(provider).advise(argThat(request -> {
+            var context = request.reportContext();
+            return context.at("/observations/0/windowSeconds").asDouble() == 5.0
+                    && context.at("/findings/0/evidenceIds/0").asText().equals("PARTIAL_HTTP")
+                    && !context.toString().contains(run.toString()) && !context.toString().contains("2026-11");
+        }));
+    }
+
     @Test void storesGroundedRunAnalysisAndReplaysItWithoutAnotherProviderCall() throws Exception {
         UUID id = UUID.randomUUID(), request = UUID.randomUUID(), run = completedRun();
         doReturn(viewWithPartial(run, 40)).when(runResults).read(run);
@@ -379,9 +451,10 @@ class AssistantIntegrationTest {
         when(provider.analyzeRun(any(), any())).thenReturn("""
                 {"findings":[{"hypothesis":"Unverified observation.","suggestedCheck":"Inspect the sample.","evidenceIds":["WHOLE_RUN"]}]}
                 """).thenThrow(new IllegalStateException("provider offline"));
-        for (int failure = 0; failure < 2; failure++) {
+        for (var issue : List.of("INVALID_RESPONSE", "UNAVAILABLE")) {
             mvc.perform(analyze(UUID.randomUUID(), UUID.randomUUID(), run)).andExpect(status().isOk())
                     .andExpect(jsonPath("$.turn.reply.analysis.status").value("PROVIDER_UNAVAILABLE"))
+                    .andExpect(jsonPath("$.turn.reply.analysis.providerIssue").value(issue))
                     .andExpect(jsonPath("$.turn.reply.analysis.verdict").value("UNEVALUATED"))
                     .andExpect(jsonPath("$.turn.reply.analysis.observations.length()").value(1))
                     .andExpect(jsonPath("$.turn.reply.analysis.findings.length()").value(0));
@@ -441,6 +514,42 @@ class AssistantIntegrationTest {
         db.update("UPDATE experiment_run SET created_by = 'other-operator' WHERE id = ?", comparison);
         mvc.perform(analyze(UUID.randomUUID(), UUID.randomUUID(), baseline, comparison)).andExpect(status().isNotFound());
         verifyNoInteractions(provider);
+    }
+
+    @Test void listsOnlyOwnedCompatibleComparisonRunsWithUsableWholeEvidence() throws Exception {
+        UUID baseline = completedRun(), target = targetId(baseline);
+        UUID eligible = completedRun(target), differentRate = completedRun(target), partialOnly = completedRun(target);
+        stubComparisonInputs(baseline, 5);
+        stubComparisonInputs(eligible, 5);
+        stubComparisonInputs(differentRate, 6);
+        stubComparisonInputs(partialOnly, 5);
+        doReturn(viewWithWhole(baseline, 210.0)).when(runResults).read(baseline);
+        doReturn(viewWithWhole(eligible, 180.0).result()).when(runResults).saved(eligible);
+        addWorkerResultRow(eligible);
+        addWorkerResultRow(differentRate);
+        String path = "/api/assistant/runs/" + baseline + "/comparison-options";
+        mvc.perform(get(path)).andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(eligible.toString()))
+                .andExpect(jsonPath("$.hasMore").value(false));
+        addOtherOperator();
+        db.update("UPDATE experiment_run SET created_by = 'other-operator' WHERE id = ?", eligible);
+        mvc.perform(get(path)).andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0));
+        mvc.perform(get(path).with(user("other-operator").roles("OPERATOR"))).andExpect(status().isNotFound());
+        verifyNoInteractions(provider);
+    }
+
+    private void addWorkerResultRow(UUID run) {
+        UUID attempt = db.queryForObject("SELECT id FROM experiment_attempt WHERE run_id = ?", UUID.class, run);
+        UUID operation = UUID.randomUUID(), plan = UUID.randomUUID();
+        db.update("INSERT INTO experiment_operation(id,attempt_id,kind,status) VALUES (?,?,'SUBMIT','CONFIRMED')", operation, attempt);
+        db.update("""
+                INSERT INTO experiment_execution_plan(id,run_id,attempt_id,submit_operation_id,run_revision,sha256,plan_json,prepared_by)
+                VALUES (?,?,?,?,1,?,'{}','admin')
+                """, plan, run, attempt, operation, "a".repeat(64));
+        db.update("""
+                INSERT INTO experiment_worker_result(attempt_id,run_id,plan_id,job_uid,pod_uid,sha256,result_json)
+                VALUES (?,?,?,'fixture-job','fixture-pod',?,'{}')
+                """, attempt, run, plan, "a".repeat(64));
     }
 
     private UUID targetId(UUID run) {

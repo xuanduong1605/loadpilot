@@ -20,6 +20,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Component
 class AssistantGuide {
     private static final Pattern RECORD_ID = Pattern.compile("(?i)\\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\\b");
+    private static final Pattern LATEST_RUN = Pattern.compile("(?i)\\b(?:my|the) (?:latest|most recent) (?:test(?: run)?|run)\\b");
+    private static final Pattern NAMED_RUN = Pattern.compile("(?i)\\b(?:for|of|about|called|named)\\s+(.+?)\\s*[.?!]*$");
     private final JdbcTemplate db;
     private final ScenarioStore scripts;
     private final ExperimentDrafts.Store drafts;
@@ -44,19 +46,23 @@ class AssistantGuide {
         Task resolved = task == Task.ASK ? intent(question) : task;
         var matcher = RECORD_ID.matcher(text);
         UUID id = selected != null ? selected : resolved != Task.ASK && matcher.find() ? UUID.fromString(matcher.group()) : null;
+        if ((resolved == Task.STATUS || resolved == Task.RESULT) && selected == null && id != null && matcher.find()) {
+            return clarifyRun();
+        }
         return switch (resolved) {
             case ASK -> faq(question);
             case SCRIPT -> script(id);
-            case STATUS -> status(runId(id, operator));
+            case STATUS -> runAnswer(id, text, operator, false);
             case START -> start(id, operator);
-            case RESULT -> result(runId(id, operator));
+            case RESULT -> runAnswer(id, text, operator, true);
             case EDIT -> edit(id, operator);
+            case REPORT -> answer("This reply uses the selected saved report. Check its observations and recorded verdict in this chat.", true);
         };
     }
 
     private static Task intent(String question) {
         if (matches(question, "run status", "test status", "status of my run", "status of my latest run", "status of this run",
-                "status of my test", "status of this test", "run progress", "test progress", "still running", "test finish", "run finish"))
+                "status of my test", "status of this test", "run progress", "test progress", "still running", "test finish", "run finish", "status for run"))
             return Task.STATUS;
         if (matches(question, "run result", "test result", "saved result", "analyze results", "analyze my run", "analyze this run"))
             return Task.RESULT;
@@ -157,29 +163,48 @@ class AssistantGuide {
         return answer(availability + " There is insufficient recorded evidence to analyze performance.", false, evidence);
     }
 
+    private Answer runAnswer(UUID id, String text, String operator, boolean results) {
+        if (id != null) {
+            requireOwned(RecordType.RUN, id, operator);
+        } else if (LATEST_RUN.matcher(text).find()) {
+            id = db.queryForList("SELECT id FROM experiment_run WHERE created_by = ? ORDER BY created_at DESC, id DESC LIMIT 1", UUID.class, operator)
+                    .stream().findFirst().orElse(null);
+        } else {
+            var name = NAMED_RUN.matcher(text);
+            if (!name.find()) return clarifyRun();
+            String label = name.group(1).strip().replaceAll("^[\"“']|[\"”']$", "");
+            var matches = db.queryForList("""
+                    SELECT r.id FROM experiment_run r
+                    JOIN experiment_input_snapshot s ON s.id = r.snapshot_id
+                    WHERE r.created_by = ? AND (? = lower(s.inputs_json::jsonb #>> '{target,name}')
+                        OR ? = lower(s.inputs_json::jsonb #>> '{scenario,script,name}'))
+                    LIMIT 2
+                    """, UUID.class, operator, label.toLowerCase(Locale.ROOT), label.toLowerCase(Locale.ROOT));
+            if (matches.size() != 1) return clarifyRun();
+            id = matches.getFirst();
+        }
+        return results ? result(id) : status(id);
+    }
+
+    private static Answer clarifyRun() {
+        return answer("Which run do you mean? Paste its run link or ID, or ask for your latest run.", false,
+                link(Destination.RUNS, "Find a run in Experiments"));
+    }
+
     RunResults.View ownedRunResult(UUID id, String operator) {
         requireOwned(RecordType.RUN, id, operator);
         return results.read(id);
     }
 
-    ExperimentSnapshots.Inputs ownedRunInputs(UUID id, String operator) {
-        requireOwned(RecordType.RUN, id, operator);
-        return snapshots.get(runs.get(id).snapshotId()).inputs();
+    ExperimentSnapshots.Inputs runInputs(UUID id) {
+        UUID snapshot = db.queryForObject("SELECT snapshot_id FROM experiment_run WHERE id = ?", UUID.class, id);
+        return snapshots.get(snapshot).inputs();
     }
 
     private enum RecordType {
         RUN("experiment_run"), DRAFT("experiment_draft"), SNAPSHOT("experiment_input_snapshot");
         private final String table;
         RecordType(String table) { this.table = table; }
-    }
-
-    private UUID runId(UUID id, String operator) {
-        if (id != null) {
-            requireOwned(RecordType.RUN, id, operator);
-            return id;
-        }
-        return db.queryForList("SELECT id FROM experiment_run WHERE created_by = ? ORDER BY created_at DESC, id DESC LIMIT 1", UUID.class, operator)
-                .stream().findFirst().orElse(null);
     }
 
     private void requireOwned(RecordType type, UUID id, String operator) {

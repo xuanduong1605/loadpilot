@@ -17,6 +17,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.security.Principal;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -47,7 +48,7 @@ class AssistantScriptDraft {
                  ScriptParser.Result executionReview, List<String> errors) {}
 
     @PostMapping("/api/assistant/script-draft")
-    Draft draft(@Valid @RequestBody Input input) {
+    Draft draft(@Valid @RequestBody Input input, Principal operator) {
         String goal = input.goal().strip();
         String lowerGoal = goal.toLowerCase(Locale.ROOT);
         if (suggestions.containsCredentials(goal) || lowerGoal.contains("http://") || lowerGoal.contains("https://")
@@ -62,9 +63,7 @@ class AssistantScriptDraft {
         }
         if (target.archivedAt() != null) throw new ResponseStatusException(HttpStatus.CONFLICT, "Choose a system that is not archived.");
 
-        String response = suggestions.proposeScript(goal, schema());
-        if (response == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                "AI script drafting is unavailable. Continue editing manually or try again later.");
+        String response = suggestions.proposeScript(operator.getName(), goal, schema()).require("Continue editing manually or try again later.");
         try {
             JsonNode proposal = json.readerFor(JsonNode.class).with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY,
                     DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readValue(response);

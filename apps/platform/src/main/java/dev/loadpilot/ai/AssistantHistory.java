@@ -58,6 +58,16 @@ class AssistantHistory {
         return new State(null, recent);
     }
 
+    public AssistantRunAnalysis.Report report(UUID id, String operator, UUID requestId) {
+        if (requestId == null || find(id, operator, false) == null) throw notFound();
+        var reports = db.query("SELECT * FROM assistant_turn WHERE conversation_id = ? AND request_id = ?",
+                (row, index) -> turn(row).reply().analysis(), id, requestId);
+        if (reports.isEmpty() || reports.getFirst() == null || reports.getFirst().observations().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "This chat does not have that saved report with observations.");
+        }
+        return reports.getFirst();
+    }
+
     @Transactional
     public Sent append(UUID id, String operator, Message request, Reply reply) {
         if (request.expectedTurns() == 0) {
@@ -71,10 +81,11 @@ class AssistantHistory {
         var replay = check(summary, request);
         if (replay != null) return replay;
         int number = summary.turnCount() + 1;
+        Task storedTask = request.task() == Task.REPORT ? Task.ASK : request.task();
         var turn = db.queryForObject("""
                 INSERT INTO assistant_turn(conversation_id, turn_number, request_id, prompt, task, record_id, reply_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
-                """, (row, index) -> turn(row), id, number, request.requestId(), request.text(), request.task().name(),
+                """, (row, index) -> turn(row), id, number, request.requestId(), request.text(), storedTask.name(),
                 request.recordId(), encode(reply));
         db.update("UPDATE assistant_conversation SET turn_count = ?, updated_at = ? WHERE id = ?", number, turn.createdAt(), id);
         return new Sent(new Summary(id, summary.title(), number, turn.createdAt()), turn);
@@ -116,9 +127,11 @@ class AssistantHistory {
 
     private Turn turn(ResultSet row) throws SQLException {
         try {
+            var reply = json.readValue(row.getString("reply_json"), Reply.class);
+            // Older readers still understand the stored ASK task during an application rollback.
+            Task task = Boolean.TRUE.equals(reply.reportFollowUp()) ? Task.REPORT : Task.valueOf(row.getString("task"));
             return new Turn(row.getInt("turn_number"), row.getObject("request_id", UUID.class), row.getString("prompt"),
-                    Task.valueOf(row.getString("task")), row.getObject("record_id", UUID.class),
-                    json.readValue(row.getString("reply_json"), Reply.class), row.getObject("created_at", OffsetDateTime.class));
+                    task, row.getObject("record_id", UUID.class), reply, row.getObject("created_at", OffsetDateTime.class));
         } catch (JsonProcessingException corrupt) {
             throw new IllegalStateException("Saved assistant reply cannot be read.");
         }
