@@ -49,7 +49,7 @@ export function AssistantWorkspace() {
     <header className={styles.bar}>
       <span className={styles.brand}><Icon name="message" />Assistant</span>
       <div className={styles.barActions}>
-        {provider !== undefined && <span className={styles.mode}>{provider ? 'AI suggestions enabled' : 'Built-in guidance'}</span>}
+        {provider !== undefined && <span className={styles.mode} role="status">{provider ? 'Gemini enabled' : 'Built-in guidance'}</span>}
         <button className={styles.historyToggle} type="button" aria-expanded={historyOpen} aria-controls="assistant-history"
           onClick={() => setHistoryOpen(open => !open)}><Icon name="clock" width={16} height={16} />History</button>
       </div>
@@ -65,7 +65,7 @@ export function AssistantWorkspace() {
         }} />
       </aside>
       <AssistantChat key={id ?? `${task}-${newVersion}`} id={id} initial={recent?.summary.id === id ? recent : undefined}
-        task={task} focusOnOpen={focusTarget === (id ?? '')} onSaved={saved} />
+        task={task} geminiEnabled={provider} focusOnOpen={focusTarget === (id ?? '')} onSaved={saved} />
     </div>
   </div>;
 }

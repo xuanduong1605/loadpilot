@@ -12,8 +12,9 @@ type Pending = { id: string; message: Message };
 const MAX_TURNS = 50;
 const MAX_LENGTH = 2000;
 
-export function AssistantChat({ id, initial, task: initialTask, focusOnOpen, onSaved }: {
-  id: string | null; initial?: Conversation; task: Task; focusOnOpen: boolean; onSaved: (value: Conversation, first: boolean) => void;
+export function AssistantChat({ id, initial, task: initialTask, geminiEnabled, focusOnOpen, onSaved }: {
+  id: string | null; initial?: Conversation; task: Task; geminiEnabled?: boolean;
+  focusOnOpen: boolean; onSaved: (value: Conversation, first: boolean) => void;
 }) {
   const [conversation, setConversation] = useState(initial);
   const [loading, setLoading] = useState(Boolean(id && !initial));
@@ -65,6 +66,7 @@ export function AssistantChat({ id, initial, task: initialTask, focusOnOpen, onS
 
   const turns = conversation?.turns ?? [];
   const full = turns.length >= MAX_TURNS;
+  const welcome = !loading && !loadError && turns.length === 0 && !busy;
   const blocked = loading || Boolean(loadError) || full;
   useEffect(() => {
     if (scrollOnSend.current && log.current) log.current.scrollTop = log.current.scrollHeight;
@@ -118,7 +120,7 @@ export function AssistantChat({ id, initial, task: initialTask, focusOnOpen, onS
     setReload(value => value + 1);
   }
 
-  return <section ref={chat} tabIndex={-1} className={styles.chat} aria-label="Assistant chat">
+  return <section ref={chat} tabIndex={-1} className={styles.chat} data-welcome={welcome} aria-label="Assistant chat">
     {loading || loadError ? <div className={styles.chatState}>
       {loading ? <p role="status">Loading conversation…</p> : <>
         <h1>Cannot open conversation</h1><p role="alert" className={styles.error}>{loadError}</p>
@@ -126,21 +128,16 @@ export function AssistantChat({ id, initial, task: initialTask, focusOnOpen, onS
         <Link href="/assistant/">Start a new chat</Link>
       </>}
     </div> : <>
-      {turns.length || busy ? <div ref={log} className={styles.scroll}>
+      {welcome ? <div className={styles.welcome}>
+        <h1>Ask Loadpilot</h1>
+        <p>Get help with k6 scripts, experiment setup, and test results.</p>
+      </div> : <div ref={log} className={styles.scroll}>
         <div className={styles.transcript}>
           <h1>{conversation?.summary.title ?? 'New chat'}</h1>
           <div className={styles.turns} role="log" aria-label="Conversation messages">
             {turns.map(turn => <Exchange key={turn.requestId} turn={turn} />)}
             {busy && pending && <><Question text={pending.message.text} /><p className={styles.waiting} role="status">Preparing your reply…</p></>}
           </div>
-        </div>
-      </div> : <div className={styles.welcome}>
-        <h1>What do you want to do today?</h1>
-        <p>Get help with scripts, test runs and recorded results.</p>
-        <div className={styles.starters} aria-label="Suggested tasks">
-          {(Object.keys(tasks) as Task[]).map(value => <button type="button" key={value} onClick={() => pick(value, true)}>
-            <Icon name={tasks[value].icon} width={18} height={18} /><span>{tasks[value].title}</span><Icon name="arrow" width={16} height={16} />
-          </button>)}
         </div>
       </div>}
       <div className={styles.composerArea}>
@@ -159,7 +156,7 @@ export function AssistantChat({ id, initial, task: initialTask, focusOnOpen, onS
               </div>
               <label className={styles.screenReader} htmlFor="assistant-message">Message</label>
               <textarea id="assistant-message" ref={textarea} value={text} onChange={event => { seededPrompt.current = undefined; setText(event.target.value); }} maxLength={MAX_LENGTH}
-                rows={3} readOnly={busy} placeholder="Ask Loadpilot…" aria-describedby="assistant-message-hint"
+                rows={3} readOnly={busy} placeholder="Write a message…" aria-describedby="assistant-message-hint"
                 onKeyDown={event => {
                   if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault(); void send();
@@ -172,9 +169,18 @@ export function AssistantChat({ id, initial, task: initialTask, focusOnOpen, onS
                 </button>
               </div>
             </div>
-            <p id="assistant-message-hint" className={styles.hint}>Chats are saved to your account. Keep credentials out of messages.</p>
+            <p id="assistant-message-hint" className={styles.hint}>
+              {geminiEnabled === false
+                ? 'Chats are saved to your account. Keep credentials out of messages.'
+                : 'Chats are saved. When Loadpilot asks Gemini, Google receives your message and recent AI exchanges. Keep sensitive data out of chat.'}
+            </p>
           </form>}
       </div>
+      {welcome && <div className={styles.starters} role="group" aria-label="Suggested tasks">
+        {(Object.keys(tasks) as Task[]).map(value => <button type="button" key={value} onClick={() => pick(value, true)}>
+          <Icon name={tasks[value].icon} width={18} height={18} /><span>{tasks[value].title}</span><Icon name="arrow" width={16} height={16} />
+        </button>)}
+      </div>}
     </>}
   </section>;
 }
