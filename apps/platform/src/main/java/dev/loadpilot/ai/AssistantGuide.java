@@ -68,6 +68,21 @@ class AssistantGuide {
     private static Answer faq(String question) {
         if (matches(question, "approv", "validation", "validate", "hash"))
             return answer("Save a script version, run the checks, then approve that exact version and hash. After you edit the script, save and review the new version before selecting it in an experiment.", false, link(Destination.SCRIPTS, "Open scripts"));
+        if (matches(question, "unevaluated", "whole-run summary", "partial window", "partial evidence", "insufficient data"))
+            return answer("A completed run can still have an unevaluated SLO. The whole-run k6 summary includes warm-up, and a saved partial window covers only part of the run. An SLO verdict requires valid evidence for the required measurement window. Open the run and inspect the evidence availability and window before interpreting its metrics.", false,
+                    link(Destination.RUNS, "Choose a run to inspect its evidence"));
+        if (matches(question, "warm-up", "warmup", "measurement window"))
+            return answer("Run duration includes warm-up. Set warm-up shorter than the duration. The measurement window starts after warm-up. Adaptive trials use the full post-warm-up window. For a ramp or spike, set the window on a constant peak plateau and exclude recovery.", false,
+                    link(Destination.SETUP, "Review the load profile"));
+        if (matches(question, "iterations/s", "iterations per second", "requests per second", "requests/s", "requested load", "achieved load"))
+            return answer("Load settings use k6 iterations per second. An iteration can make multiple HTTP requests, so requests per second measures a different quantity. The load profile shows the requested rate. Use measured evidence to see what the generator achieved.", false,
+                    link(Destination.SETUP, "Review load settings"), link(Destination.RUNS, "Choose a run to inspect its evidence"));
+        if (matches(question, "run budget", "time budget", "run limits", "repetitions", "generator resources"))
+            return answer("Run and time budgets must cover the repetitions at a tested load. Allow for startup, run duration including warm-up, shutdown, and configured retries. Generator CPU and memory limits apply to the load generator. Review the effective attempt limits before finalizing inputs.", false,
+                    link(Destination.SETUP, "Review run and generator limits"));
+        if (matches(question, "finalized inputs", "input snapshot", "saved input"))
+            return answer("Finalized inputs capture the exact saved settings and approved script for a run. To change settings, edit the draft, save it, and review and finalize a new snapshot. Earlier runs retain their original inputs.", false,
+                    link(Destination.SETUP, "Open experiment setup"), link(Destination.INPUTS, "Browse finalized inputs"));
         if (matches(question, "connect", "register", "system", "target", "grafana"))
             return answer("Register your application in Systems. Open its settings to check the API, Kubernetes and monitoring connections separately. Use the diagnostics to see which connection needs attention.", false, link(Destination.SYSTEMS, "Open systems"));
         if (matches(question, "percentile", "p95", "p99", "slo", "verdict"))
@@ -134,6 +149,16 @@ class AssistantGuide {
                 "\n\nThe saved partial window from %s to %s recorded %,d HTTP requests, %.2f requests/s, p95 HTTP duration of %.2f ms and a %.2f%% error ratio. This window is a historical sample and cannot establish an SLO verdict.",
                 window.windowFrom(), window.windowUntil(), window.requestCount(), window.requestsPerSecond(), window.p95LatencyMs(), window.errorRatio() * 100), true, evidence);
         return answer(availability + " There is insufficient recorded evidence to analyze performance.", false, evidence);
+    }
+
+    RunResults.View ownedRunResult(UUID id, String operator) {
+        requireOwned(RecordType.RUN, id, operator);
+        return results.read(id);
+    }
+
+    ExperimentSnapshots.Inputs ownedRunInputs(UUID id, String operator) {
+        requireOwned(RecordType.RUN, id, operator);
+        return snapshots.get(runs.get(id).snapshotId()).inputs();
     }
 
     private enum RecordType {

@@ -22,7 +22,7 @@ class AssistantErrors {
 
     @ExceptionHandler({MethodArgumentNotValidException.class, MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class})
     ResponseEntity<?> invalid() {
-        return ResponseEntity.badRequest().body(Map.of("code", "ASSISTANT_INVALID", "message", "Check the conversation, task, and message length."));
+        return ResponseEntity.badRequest().body(Map.of("code", "ASSISTANT_INVALID", "message", "Check the Assistant request fields and text length."));
     }
 
     @ExceptionHandler({ExperimentDrafts.Problem.class, ScenarioStore.Problem.class})

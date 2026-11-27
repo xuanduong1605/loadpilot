@@ -76,6 +76,22 @@ class GeminiAssistantProviderTest {
         }
     }
 
+    @Test void sendsOnlyTheGoalAndSchemaForSettings() throws Exception {
+        try (var fixture = new Fixture(); var assistant = fixture.provider()) {
+            var schema = json.createObjectNode().put("type", "object");
+            fixture.reply.set("""
+                    {"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"{\\"changes\\":[]}"}]}}]}
+                    """);
+            assertThat(assistant.proposeSettings("Use 5 iterations/s.", schema)).isEqualTo("{\"changes\":[]}");
+            var wire = json.readTree(fixture.body.get());
+            assertThat(wire.at("/generationConfig/responseMimeType").textValue()).isEqualTo("application/json");
+            assertThat(wire.at("/generationConfig/responseJsonSchema")).isEqualTo(schema);
+            assertThat(json.readTree(wire.at("/contents/0/parts/0/text").textValue()))
+                    .isEqualTo(json.createObjectNode().put("goal", "Use 5 iterations/s."));
+            assertThat(wire.has("tools")).isFalse();
+        }
+    }
+
     @Test @Timeout(15) void timesOutWhenTheProviderStallsAfterSendingHeaders() throws Exception {
         try (var fixture = new Fixture(); var assistant = fixture.provider()) {
             fixture.reply.set("The provider will stall before this body.");

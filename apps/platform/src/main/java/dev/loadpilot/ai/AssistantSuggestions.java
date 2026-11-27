@@ -1,5 +1,6 @@
 package dev.loadpilot.ai;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import dev.loadpilot.ai.AssistantApi.*;
 import jakarta.annotation.PreDestroy;
 import java.util.List;
@@ -44,25 +45,42 @@ class AssistantSuggestions {
                 .map(turn -> new AssistantProvider.Exchange(turn.text(), turn.reply().suggestion()))
                 .toList();
         var request = new AssistantProvider.Request(message.task(), message.text(), guidance.facts(), context);
+        String answer = call(() -> provider.advise(request));
+        return new Suggestion(answer, answer == null);
+    }
+
+    String proposeSettings(String goal, JsonNode schema) {
+        return provider == null ? null : call(() -> provider.proposeSettings(goal, schema));
+    }
+
+    String analyzeRun(JsonNode evidence, JsonNode schema) {
+        return provider == null ? null : call(() -> provider.analyzeRun(evidence, schema));
+    }
+
+    String proposeScript(String goal, JsonNode schema) {
+        return provider == null ? null : call(() -> provider.proposeScript(goal, schema));
+    }
+
+    private String call(Callable<String> task) {
         Future<String> call;
         try {
-            call = calls.submit(() -> provider.advise(request));
+            call = calls.submit(task);
         } catch (RejectedExecutionException busy) {
-            return new Suggestion(null, true);
+            return null;
         }
         try {
             String answer = call.get(8, TimeUnit.SECONDS);
             if (answer == null || answer.isBlank() || answer.length() > OUTPUT_LIMIT || containsCredentials(answer)
                     || answer.codePoints().anyMatch(cp -> Character.isISOControl(cp) && cp != '\n' && cp != '\r' && cp != '\t'))
-                return new Suggestion(null, true);
-            return new Suggestion(answer.strip(), false);
+                return null;
+            return answer.strip();
         } catch (InterruptedException interrupted) {
             call.cancel(true);
             Thread.currentThread().interrupt();
-            return new Suggestion(null, true);
+            return null;
         } catch (TimeoutException | ExecutionException unavailable) {
             call.cancel(true);
-            return new Suggestion(null, true);
+            return null;
         }
     }
 
