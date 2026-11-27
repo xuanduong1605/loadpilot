@@ -4,36 +4,34 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/icon';
 import { api, ApiError, mutate } from '../../lib/api';
-import { AssistantContext } from './assistant-context';
+import { requestId } from '../../lib/request-id';
 import { AssistantRunReport } from './assistant-run-report';
-import { answerHref, tasks, uuid, type Conversation, type Message, type Sent, type Task, type Turn } from './assistant-data';
+import { answerHref, starterPrompts, uuid, type Conversation, type Message, type Sent, type Turn } from './assistant-data';
 import styles from './assistant.module.css';
 
 type Pending = { id: string; message: Message };
 const MAX_TURNS = 50;
 const MAX_LENGTH = 2000;
 
-export function AssistantChat({ id, initial, task: initialTask, geminiEnabled, focusOnOpen, onSaved }: {
-  id: string | null; initial?: Conversation; task: Task; geminiEnabled?: boolean;
+export function AssistantChat({ id, initial, prompt, focusOnOpen, onSaved }: {
+  id: string | null; initial?: Conversation; prompt: string;
   focusOnOpen: boolean; onSaved: (value: Conversation, first: boolean) => void;
 }) {
   const [conversation, setConversation] = useState(initial);
   const [loading, setLoading] = useState(Boolean(id && !initial));
   const [loadError, setLoadError] = useState('');
   const [reload, setReload] = useState(0);
-  const [text, setText] = useState('');
-  const [task, setTask] = useState(initial?.turns.at(-1)?.task ?? initialTask);
-  const [recordId, setRecordId] = useState(initial?.turns.at(-1)?.recordId ?? null);
+  const [text, setText] = useState(prompt);
   const [pending, setPending] = useState<Pending>();
   const [sendError, setSendError] = useState<{ message: string; conflict: boolean }>();
   const sending = useRef(false);
   const [busy, setBusy] = useState(false);
   const active = useRef(true);
-  const seededPrompt = useRef<string | undefined>(undefined);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const chat = useRef<HTMLElement>(null);
   const log = useRef<HTMLDivElement>(null);
-  const scrollOnSend = useRef(false);
+  const exchanges = useRef<HTMLDivElement>(null);
+  const scrollToLatest = useRef(false);
 
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => { if (initial) textarea.current?.focus({ preventScroll: true }); }, [initial]);
@@ -53,46 +51,33 @@ export function AssistantChat({ id, initial, task: initialTask, geminiEnabled, f
     void api<Conversation>(`/api/assistant/conversations/${id}`, { signal: controller.signal })
       .then(value => {
         if (!current) return;
-        scrollOnSend.current = true;
+        scrollToLatest.current = true;
         setConversation(value);
-        if (!reload) {
-          setTask(value.turns.at(-1)?.task ?? initialTask);
-          setRecordId(value.turns.at(-1)?.recordId ?? null);
-        }
       })
       .catch(reason => { if (current) setLoadError(reason.message); })
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; controller.abort(); };
-  }, [id, initial, initialTask, reload]);
+  }, [id, initial, reload]);
 
   const turns = conversation?.turns ?? [];
   const full = turns.length >= MAX_TURNS;
   const welcome = !loading && !loadError && turns.length === 0 && !busy;
   const blocked = loading || Boolean(loadError) || full;
   useEffect(() => {
-    if (scrollOnSend.current && log.current) log.current.scrollTop = log.current.scrollHeight;
-  }, [busy, turns.length]);
-
-  function pick(next: Task, seed = false) {
-    if (next !== task) {
-      setTask(next);
-      setRecordId(null);
-    }
-    if ((seed && !text) || (seededPrompt.current && text === seededPrompt.current)) {
-      seededPrompt.current = tasks[next].prompt;
-      setText(seededPrompt.current);
-    }
-    if (seed) textarea.current?.focus();
-  }
+    const viewport = log.current;
+    const latest = exchanges.current?.lastElementChild;
+    if (!scrollToLatest.current || !viewport || !latest) return;
+    viewport.scrollTop += latest.getBoundingClientRect().top - viewport.getBoundingClientRect().top - 16;
+    scrollToLatest.current = false;
+  }, [busy, loading, turns.length]);
 
   async function send() {
     if (sending.current || blocked || sendError?.conflict || !text.trim()) return;
     const messageText = text.trim();
-    const reused = pending?.message.text === messageText && pending.message.task === task && pending.message.recordId === recordId;
-    const request = reused ? pending : { id: id ?? pending?.id ?? crypto.randomUUID(),
-      message: { requestId: crypto.randomUUID(), expectedTurns: turns.length, text: messageText, task, recordId } };
+    const request = pending?.message.text === messageText ? pending : { id: id ?? pending?.id ?? requestId(),
+      message: { requestId: requestId(), expectedTurns: turns.length, text: messageText, task: 'ASK', recordId: null } } satisfies Pending;
     sending.current = true;
-    scrollOnSend.current = true;
+    scrollToLatest.current = true;
     setPending(request);
     setBusy(true);
     setSendError(undefined);
@@ -100,9 +85,9 @@ export function AssistantChat({ id, initial, task: initialTask, geminiEnabled, f
       const saved = await mutate<Sent>(`/api/assistant/conversations/${request.id}/messages`, 'POST', request.message);
       const next = { summary: saved.summary, turns: [...turns, saved.turn] };
       if (!active.current) { onSaved(next, false); return; }
+      scrollToLatest.current = true;
       setConversation(next);
       setText('');
-      seededPrompt.current = undefined;
       setPending(undefined);
       onSaved(next, id === null);
       if (id && saved.summary.turnCount !== next.turns.length) setReload(value => value + 1);
@@ -131,13 +116,18 @@ export function AssistantChat({ id, initial, task: initialTask, geminiEnabled, f
     </div> : <>
       {welcome ? <div className={styles.welcome}>
         <h1>Ask Loadpilot</h1>
-        <p>Get help with k6 scripts, experiment setup, and test results.</p>
+        <p>Ask about k6 scripts, experiment settings, or saved runs.</p>
       </div> : <div ref={log} className={styles.scroll}>
         <div className={styles.transcript}>
-          <h1>{conversation?.summary.title ?? 'New chat'}</h1>
-          <div className={styles.turns} role="log" aria-label="Conversation messages">
+          <h1 title={conversation?.summary.title}>{conversation?.summary.title ?? 'New chat'}</h1>
+          <div ref={exchanges} className={styles.turns} role="log" aria-label="Conversation messages">
             {turns.map(turn => <Exchange key={turn.requestId} turn={turn} />)}
-            {busy && pending && <><Question text={pending.message.text} /><p className={styles.waiting} role="status">Preparing your reply…</p></>}
+            {busy && pending && <div className={styles.exchange}>
+              <Question text={pending.message.text} />
+              <p className={styles.thinking} role="status"><Icon name="message" width={18} height={18} />
+                Assistant is thinking<span aria-hidden="true" className={styles.thinkingDots}><i /><i /><i /></span>
+              </p>
+            </div>}
           </div>
         </div>
       </div>}
@@ -149,37 +139,32 @@ export function AssistantChat({ id, initial, task: initialTask, geminiEnabled, f
               {sendError.conflict && <button type="button" onClick={reloadChat}>Reload chat</button>}
             </div>}
             <div className={styles.composer}>
-              <div className={styles.controls}>
-                <label><span>Task</span><select value={task} disabled={busy} onChange={event => pick(event.target.value as Task)}>
-                  {(Object.keys(tasks) as Task[]).map(value => <option key={value} value={value}>{tasks[value].title}</option>)}
-                </select></label>
-                <AssistantContext task={task} value={recordId} onChange={setRecordId} disabled={busy} />
-              </div>
               <label className={styles.screenReader} htmlFor="assistant-message">Message</label>
-              <textarea id="assistant-message" ref={textarea} value={text} onChange={event => { seededPrompt.current = undefined; setText(event.target.value); }} maxLength={MAX_LENGTH}
-                rows={3} readOnly={busy} placeholder="Write a message…" aria-describedby="assistant-message-hint"
+              <textarea id="assistant-message" ref={textarea} value={busy ? '' : text} onChange={event => setText(event.target.value)} maxLength={MAX_LENGTH}
+                rows={2} readOnly={busy} placeholder="Message Loadpilot…" aria-describedby="assistant-message-hint"
                 onKeyDown={event => {
                   if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault(); void send();
                   }
                 }} />
               <div className={styles.composerFooter}>
-                <span aria-label={`${text.length} of ${MAX_LENGTH} characters`}>{text.length}/{MAX_LENGTH}</span>
+                {text.length >= MAX_LENGTH * 0.9 && <span>{text.length}/{MAX_LENGTH}</span>}
                 <button type="submit" className={styles.send} aria-label="Send message" disabled={busy || !text.trim() || sendError?.conflict}>
-                  <Icon name="send" width={20} height={20} />
+                  Send<Icon name="send" width={17} height={17} />
                 </button>
               </div>
             </div>
             <p id="assistant-message-hint" className={styles.hint}>
-              {geminiEnabled === false
-                ? 'Chats are saved to your account. Keep credentials out of messages.'
-                : 'Chats are saved. When Loadpilot asks Gemini, Google receives your message and recent AI exchanges. Keep sensitive data out of chat.'}
+              Chats are saved. Gemini may receive your message and recent AI exchanges. Keep sensitive data out of chat.
             </p>
           </form>}
       </div>
-      {welcome && <div className={styles.starters} role="group" aria-label="Suggested tasks">
-        {(Object.keys(tasks) as Task[]).map(value => <button type="button" key={value} onClick={() => pick(value, true)}>
-          <Icon name={tasks[value].icon} width={18} height={18} /><span>{tasks[value].title}</span><Icon name="arrow" width={16} height={16} />
+      {welcome && <div className={styles.starters} role="group" aria-label="Example questions">
+        {starterPrompts.map(example => <button type="button" key={example} onClick={() => {
+          if (!text || text === prompt || starterPrompts.includes(text)) setText(example);
+          textarea.current?.focus();
+        }}>
+          <span>{example}</span><Icon name="arrow" width={16} height={16} />
         </button>)}
       </div>}
     </>}
@@ -195,11 +180,13 @@ function Exchange({ turn }: { turn: Turn }) {
     <Question text={turn.text} />
     <article className={styles.answer} aria-label="Assistant reply">
       <span className={styles.answerTitle}><Icon name="message" width={18} height={18} />Loadpilot</span>
-      <p className={styles.copy}>{turn.reply.text}</p>
+      {turn.reply.suggestion ? <>
+        <p className={styles.copy}>{turn.reply.suggestion}</p>
+        <details className={styles.guidance}>
+          <summary>Loadpilot guidance</summary><p className={styles.copy}>{turn.reply.text}</p>
+        </details>
+      </> : <p className={styles.copy}>{turn.reply.text}</p>}
       {turn.reply.analysis && <AssistantRunReport id={turn.requestId} report={turn.reply.analysis} />}
-      {turn.reply.suggestion && <div className={styles.suggestion}>
-        <h2>AI suggestion</h2><p className={styles.copy}>{turn.reply.suggestion}</p>
-      </div>}
       {turn.reply.providerUnavailable && !turn.reply.analysis && <p className={styles.waiting}>AI suggestions are temporarily unavailable. You can continue with the guidance above.</p>}
       {turn.reply.links.length > 0 && <ul className={styles.links} aria-label="Related pages">
         {turn.reply.links.map(link => {

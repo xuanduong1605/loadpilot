@@ -6,28 +6,19 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../../components/icon';
 import { api } from '../../lib/api';
 import { AssistantChat } from './assistant-chat';
-import { taskFromQuery, type Conversation, type History, type Summary } from './assistant-data';
+import { promptFromQuery, type Conversation, type History, type Summary } from './assistant-data';
 import styles from './assistant.module.css';
 
 export function AssistantWorkspace() {
   const router = useRouter();
   const query = useSearchParams();
   const id = query.get('chat');
-  const task = taskFromQuery(query.get('task'));
+  const prompt = id ? '' : promptFromQuery(query.get('task'));
   const [recent, setRecent] = useState<Conversation>();
   const [historyVersion, setHistoryVersion] = useState(0);
   const [newVersion, setNewVersion] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [focusTarget, setFocusTarget] = useState<string>();
-  const [provider, setProvider] = useState<boolean>();
-
-  useEffect(() => {
-    let active = true;
-    void api<{ providerAvailable: boolean }>('/api/assistant/capabilities')
-      .then(value => { if (active) setProvider(value.providerAvailable); })
-      .catch(() => {});
-    return () => { active = false; };
-  }, []);
 
   function newChat() {
     setRecent(undefined);
@@ -48,11 +39,8 @@ export function AssistantWorkspace() {
   return <div className={styles.workspace} data-assistant data-transcript={Boolean(id)}>
     <header className={styles.bar}>
       <span className={styles.brand}><Icon name="message" />Assistant</span>
-      <div className={styles.barActions}>
-        {provider !== undefined && <span className={styles.mode} role="status">{provider ? 'Gemini enabled' : 'Built-in guidance'}</span>}
-        <button className={styles.historyToggle} type="button" aria-expanded={historyOpen} aria-controls="assistant-history"
-          onClick={() => setHistoryOpen(open => !open)}><Icon name="clock" width={16} height={16} />History</button>
-      </div>
+      <button className={styles.historyToggle} type="button" aria-expanded={historyOpen} aria-controls="assistant-history"
+        onClick={() => setHistoryOpen(open => !open)}><Icon name="clock" width={16} height={16} />History</button>
     </header>
     <div className={styles.body}>
       <aside className={styles.history} id="assistant-history" data-open={historyOpen} aria-label="Conversation history">
@@ -64,8 +52,8 @@ export function AssistantWorkspace() {
           setFocusTarget(next);
         }} />
       </aside>
-      <AssistantChat key={id ?? `${task}-${newVersion}`} id={id} initial={recent?.summary.id === id ? recent : undefined}
-        task={task} geminiEnabled={provider} focusOnOpen={focusTarget === (id ?? '')} onSaved={saved} />
+      <AssistantChat key={id ?? `${prompt}-${newVersion}`} id={id} initial={recent?.summary.id === id ? recent : undefined}
+        prompt={prompt} focusOnOpen={focusTarget === (id ?? '')} onSaved={saved} />
     </div>
   </div>;
 }

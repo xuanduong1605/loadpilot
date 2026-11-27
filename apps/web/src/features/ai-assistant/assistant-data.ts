@@ -1,15 +1,18 @@
-import type { IconName } from '../../components/icon';
+export type Task = 'ASK' | 'SCRIPT' | 'STATUS' | 'START' | 'RESULT' | 'EDIT';
 
-export const tasks = {
-  ASK: { title: 'Ask a question', icon: 'help', prompt: 'How do I approve a script?' },
-  SCRIPT: { title: 'Modify a scenario', icon: 'scenarios', prompt: 'Help me revise a k6 scenario.' },
-  STATUS: { title: 'Check test status', icon: 'activity', prompt: 'What is the status of this test?' },
-  START: { title: 'Prepare a test run', icon: 'play', prompt: 'Help me prepare to run this test.' },
-  RESULT: { title: 'Analyze results', icon: 'chart', prompt: 'What do the saved results show?' },
-  EDIT: { title: 'Modify a test', icon: 'edit', prompt: 'Help me update my experiment settings.' },
-} satisfies Record<string, { title: string; icon: IconName; prompt: string }>;
+export const starterPrompts = [
+  'How do I approve a script?',
+  'Show me an example k6 response check.',
+  'What do my latest run results show?',
+];
 
-export type Task = keyof typeof tasks;
+const linkedPrompts: Partial<Record<Task, string>> = {
+  SCRIPT: 'Help me revise a k6 scenario.',
+  STATUS: 'What is the status of my latest run?',
+  START: 'How do I start a test run?',
+  RESULT: 'What do my latest run results show?',
+  EDIT: 'Help me update my experiment settings.',
+};
 export type Summary = { id: string; title: string; turnCount: number; updatedAt: string };
 type Destination = 'SYSTEMS' | 'SCRIPTS' | 'SCRIPT_EDITOR' | 'RUNS' | 'RUN_MONITOR' | 'RUN_EVIDENCE' | 'INPUTS' | 'INPUT_REVIEW' | 'SETUP';
 export type AnswerLink = { destination: Destination; recordId: string | null; version: number | null; label: string };
@@ -33,7 +36,8 @@ export type History = { items: Summary[]; hasMore: boolean };
 export type Sent = { summary: Summary; turn: Turn };
 
 export const uuid = /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
-export const taskFromQuery = (value: string | null): Task => value && Object.hasOwn(tasks, value) ? value as Task : 'ASK';
+export const promptFromQuery = (value: string | null): string => value && Object.hasOwn(linkedPrompts, value)
+  ? linkedPrompts[value as Task] ?? '' : '';
 
 export function answerHref(link: AnswerLink): string | undefined {
   const id = link.recordId && uuid.test(link.recordId) ? link.recordId : null;

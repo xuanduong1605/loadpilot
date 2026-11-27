@@ -133,6 +133,26 @@ class AssistantIntegrationTest {
         verifyNoInteractions(provider);
     }
 
+    @Test void answersNaturalLanguageExamplesAndKeepsUnscopedAdviceFromOlderChats() throws Exception {
+        UUID conversation = UUID.randomUUID();
+        String oldQuestion = "Help me revise a k6 scenario.";
+        String question = "For a fictional k6 ramp test, give a short example of separating warm-up from the measurement window.";
+        when(provider.advise(any())).thenReturn("Use finite phases.", "Measure the constant-rate phase separately.", "Check for HTTP 200.");
+
+        mvc.perform(send(conversation, new Message(UUID.randomUUID(), 0, oldQuestion, Task.SCRIPT, null)))
+                .andExpect(status().isOk());
+        mvc.perform(send(conversation, new Message(UUID.randomUUID(), 1, question, Task.ASK, null)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.turn.reply.suggestion").value("Measure the constant-rate phase separately."))
+                .andExpect(jsonPath("$.turn.reply.links[0].destination").value("SCRIPT_EDITOR"));
+        verify(provider).advise(argThat(request -> request.question().equals(question) && request.recent().size() == 1
+                && request.recent().getFirst().question().equals(oldQuestion)));
+
+        mvc.perform(send(conversation, new Message(UUID.randomUUID(), 2, "How do I check HTTP status in k6?", Task.ASK, null)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.turn.reply.suggestion").value("Check for HTTP 200."));
+    }
+
     @Test void previewsStructuredSettingsWithoutChangingSavedInputs() throws Exception {
         UUID run = completedRun();
         String goal = "Raise the maximum rate to 20 iterations/s and set p99 to 175 ms.";
@@ -294,7 +314,7 @@ class AssistantIntegrationTest {
     @Test void readsAnOwnedRunAndKeepsMissingEvidenceAndRunStartSeparate() throws Exception {
         UUID id = UUID.randomUUID();
         UUID run = completedRun();
-        mvc.perform(send(id, new Message(UUID.randomUUID(), 0, "Check my test status.", Task.STATUS, null)))
+        mvc.perform(send(id, new Message(UUID.randomUUID(), 0, "What is the status of my latest run?", Task.ASK, null)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.turn.reply.text", containsString("completed")))
                 .andExpect(jsonPath("$.turn.reply.links[0].recordId").value(run.toString()));
         mvc.perform(send(id, new Message(UUID.randomUUID(), 1, "Analyze results for " + run, Task.ASK, null)))

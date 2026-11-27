@@ -39,7 +39,8 @@ class AssistantSuggestions {
         if (provider == null || !guidance.offerAdvice())
             return new Suggestion(null, false);
         var context = recent.stream()
-                .filter(turn -> turn.task() == message.task() && java.util.Objects.equals(turn.recordId(), message.recordId())
+                .filter(turn -> (turn.task() == message.task() || (message.task() == Task.ASK && message.recordId() == null))
+                        && java.util.Objects.equals(turn.recordId(), message.recordId())
                         && !containsCredentials(turn.text())
                         && turn.reply().suggestion() != null && !containsCredentials(turn.reply().suggestion()))
                 .map(turn -> new AssistantProvider.Exchange(turn.text(), turn.reply().suggestion()))

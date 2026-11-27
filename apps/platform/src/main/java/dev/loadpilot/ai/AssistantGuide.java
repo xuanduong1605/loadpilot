@@ -55,8 +55,11 @@ class AssistantGuide {
     }
 
     private static Task intent(String question) {
-        if (matches(question, "status", "progress", "still running", "test finish", "run finish")) return Task.STATUS;
-        if (matches(question, "result", "analy", "why did", "what happened")) return Task.RESULT;
+        if (matches(question, "run status", "test status", "status of my run", "status of my latest run", "status of this run",
+                "status of my test", "status of this test", "run progress", "test progress", "still running", "test finish", "run finish"))
+            return Task.STATUS;
+        if (matches(question, "run result", "test result", "saved result", "analyze results", "analyze my run", "analyze this run"))
+            return Task.RESULT;
         if (matches(question, "start a test", "start the test", "start a run", "start the run", "run a test", "run the test", "run tests", "launch")) return Task.START;
         if (matches(question, "edit", "change", "modify", "adjust", "draft", "write", "create", "update")) {
             if (matches(question, "script", "scenario", "k6")) return Task.SCRIPT;
@@ -66,6 +69,9 @@ class AssistantGuide {
     }
 
     private static Answer faq(String question) {
+        if (matches(question, " example", "fictional", "hypothetical") && matches(question, "k6", "script", "scenario"))
+            return answer("Use the script editor to draft and check a k6 scenario before saving and approving it.", true,
+                    link(Destination.SCRIPT_EDITOR, "Open script editor"));
         if (matches(question, "approv", "validation", "validate", "hash"))
             return answer("Save a script version, run the checks, then approve that exact version and hash. After you edit the script, save and review the new version before selecting it in an experiment.", false, link(Destination.SCRIPTS, "Open scripts"));
         if (matches(question, "unevaluated", "whole-run summary", "partial window", "partial evidence", "insufficient data"))
@@ -89,7 +95,7 @@ class AssistantGuide {
             return answer("A latency percentile describes the distribution of observed requests. For example, p95 is the latency at or below which about 95% of observations fall. An SLO verdict requires valid evidence from the required measurement window. Open a run to inspect its evidence or Setup to review thresholds.", false, link(Destination.RUNS, "View runs"), link(Destination.SETUP, "Open experiment setup"));
         if (matches(question, "stop", "cancel"))
             return answer("Open the run monitor, select Stop run and confirm the request. Watch the run status for confirmed termination and inspect any retained evidence.", false, link(Destination.RUNS, "Choose a run"));
-        return answer("I can help with system registration, script approval, experiment setup, run status and saved results. Ask about a specific step or choose a task to connect a record.", true,
+        return answer("Ask about a specific setup step, script change, or run result. For a particular saved record, include its ID or open the relevant page below.", true,
                 link(Destination.SCRIPTS, "Open scripts"), link(Destination.RUNS, "Browse experiments"));
     }
 

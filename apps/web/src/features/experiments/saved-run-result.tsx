@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { api, mutate } from '../../lib/api';
+import { requestId } from '../../lib/request-id';
 import { Button, Notice } from '../../components/form-controls';
 import controls from '../../components/form-controls.module.css';
 import { uuid, type Sent } from '../ai-assistant/assistant-data';
@@ -51,7 +52,7 @@ export function SavedRunResult({ runId, refreshKey, completed }: { runId: string
     setAnalysisError(undefined);
     try {
       const request = pending.current && pending.current.comparisonRunId === comparisonRunId ? pending.current
-        : { conversationId: crypto.randomUUID(), requestId: crypto.randomUUID(), comparisonRunId };
+        : { conversationId: requestId(), requestId: requestId(), comparisonRunId };
       pending.current = request;
       const saved = await mutate<Sent>(`/api/assistant/conversations/${request.conversationId}/analysis`, 'POST', {
         runId, requestId: request.requestId, expectedTurns: 0, comparisonRunId,
