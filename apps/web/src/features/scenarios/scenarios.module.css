@@ -29,6 +29,7 @@
 .version .status { margin-bottom: 8px; }
 .scriptDraft { display: grid; gap: 10px; min-width: 0; padding-block: 8px; }
 .scriptDraft textarea { resize: vertical; line-height: 1.55; }
+.scriptDraftSteps ol { padding-inline-start: 24px; margin-block: 4px 0; overflow-wrap: anywhere; }
 .scriptDraftSource { min-width: 0; max-height: 210px; margin: 0; padding: 8px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-field); white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-code); }
 
 .editorPane { display: flex; flex-direction: column; }

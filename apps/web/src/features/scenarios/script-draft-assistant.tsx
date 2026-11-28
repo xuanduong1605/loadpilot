@@ -7,7 +7,9 @@ import { api, mutate } from '../../lib/api';
 import type { TargetPage } from '../targets/types';
 import styles from './scenarios.module.css';
 
-type ScriptDraft = { source: string | null; method: 'GET' | 'HEAD' | null; expectedStatus: number | null; errors: string[] };
+type Check = { method: 'GET' | 'HEAD'; expectedStatus: number | null };
+type ScriptDraft = { source: string | null; method: Check['method'] | null; expectedStatus: number | null;
+  errors: string[]; steps?: (Check & { path: string })[] };
 const PAGE_SIZE = 20;
 
 export function ScriptDraftAssistant({ source, version, disabled, apply }: {
@@ -20,6 +22,7 @@ export function ScriptDraftAssistant({ source, version, disabled, apply }: {
   const [targetsError, setTargetsError] = useState('');
   const [targetId, setTargetId] = useState('');
   const [timeout, setTimeoutValue] = useState('');
+  const [pathText, setPathText] = useState('');
   const [goal, setGoal] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -28,6 +31,8 @@ export function ScriptDraftAssistant({ source, version, disabled, apply }: {
   const summary = useRef<HTMLElement>(null);
   const timeoutMs = Number(timeout);
   const validTimeout = /^\d+$/.test(timeout) && timeoutMs >= 1 && timeoutMs <= 120000;
+  const paths = pathText.split(/\r?\n/).map(path => path.trim()).filter(Boolean);
+  const invalidPaths = paths.length > 4 || paths.some(path => path.length > 512 || !/^\/(?!\/)[^?#\\\s]*$/.test(path));
 
   useEffect(() => {
     if (!opened) return;
@@ -44,10 +49,12 @@ export function ScriptDraftAssistant({ source, version, disabled, apply }: {
   function clearPreview() { setPreview(undefined); setError(''); setApplied(false); }
 
   async function requestDraft() {
-    if (busy || disabled || !targetId || !goal.trim() || !validTimeout) return;
+    if (busy || disabled || !targetId || !goal.trim() || !validTimeout || invalidPaths) return;
     clearPreview(); setBusy(true);
     try {
-      const draft = await mutate<ScriptDraft>('/api/assistant/script-draft', 'POST', { targetId, goal: goal.trim(), requestTimeoutMs: timeoutMs });
+      const draft = await mutate<ScriptDraft>('/api/assistant/script-draft', 'POST', {
+        targetId, goal: goal.trim(), requestTimeoutMs: timeoutMs, paths: paths.length ? paths : undefined,
+      });
       if (!draft.source || draft.errors.length) {
         setError(draft.errors.join(' ') || 'Gemini did not return a script draft.');
         return;
@@ -92,19 +99,36 @@ export function ScriptDraftAssistant({ source, version, disabled, apply }: {
         onKeyDown={event => { if (event.key === 'Enter') event.preventDefault(); }}
         onChange={event => { setTimeoutValue(event.target.value); clearPreview(); }} />
       <div className={controls.field}>
-        <label htmlFor="script-draft-goal">Describe one GET or HEAD request</label>
+        <label htmlFor="script-draft-goal">Describe GET or HEAD checks</label>
         <textarea id="script-draft-goal" className={controls.input} value={goal} readOnly={disabled || busy} rows={3} maxLength={2000}
           placeholder="Example: GET and check for HTTP 200." aria-describedby="script-draft-sharing"
           onChange={event => { setGoal(event.target.value); clearPreview(); }} />
-        <span id="script-draft-sharing" className={controls.hint}>Gemini receives your goal text. Loadpilot adds the registered URL locally. Set steady, ramp, or spike load in Experiment Setup. Keep URLs and credentials out of the goal.</span>
+        <span id="script-draft-sharing" className={controls.hint}>Gemini receives your goal text. Enter request paths separately and keep URLs and credentials out of the goal. Set the load shape in Experiment Setup.</span>
       </div>
+      <details className={styles.version}>
+        <summary>Request paths{paths.length ? ` (${paths.length})` : ''}</summary>
+        <div className={controls.field}>
+          <label htmlFor="script-draft-paths">Paths on the selected origin</label>
+          <textarea id="script-draft-paths" className={controls.input} value={pathText} readOnly={disabled || busy} rows={2} maxLength={2051}
+            placeholder={'/health\n/catalog'} aria-invalid={invalidPaths || undefined} aria-describedby="script-draft-paths-help"
+            onChange={event => { setPathText(event.target.value); clearPreview(); }} />
+          <span id="script-draft-paths-help" className={controls.hint}>{invalidPaths
+            ? 'Enter up to four paths starting with a single slash, with no query strings or fragments.'
+            : 'Leave blank for the registered URL. For multiple checks, enter one path per line and describe each request in order.'}</span>
+        </div>
+      </details>
       <div className={styles.actions}><Button className={styles.compactButton} variant="secondary" busy={busy}
-        disabled={disabled || !targetId || !validTimeout || !goal.trim()} onClick={() => void requestDraft()}>
+        disabled={disabled || !targetId || !validTimeout || !goal.trim() || invalidPaths} onClick={() => void requestDraft()}>
         {busy ? 'Drafting script…' : 'Preview script'}
       </Button></div>
       {error && <Notice title="Script preview unavailable" tone="error">{error}</Notice>}
       {preview && <>
-        <p className={styles.status}>{preview.draft.method} · HTTP {preview.draft.expectedStatus ?? '2xx or 3xx'} · Draft checks passed</p>
+        {preview.draft.steps?.length ? <div className={styles.scriptDraftSteps}>
+          <p className={styles.status}>{preview.draft.steps.length} {preview.draft.steps.length === 1 ? 'request' : 'requests'} per iteration · Draft checks passed</p>
+          <ol aria-label="Proposed request order">{preview.draft.steps.map((step, index) => <li key={index}>
+            <strong>{step.method}</strong> <code>{step.path}</code> · HTTP {step.expectedStatus ?? '2xx or 3xx'}
+          </li>)}</ol>
+        </div> : <p className={styles.status}>{preview.draft.method} · HTTP {preview.draft.expectedStatus ?? '2xx or 3xx'} · Draft checks passed</p>}
         <pre className={styles.scriptDraftSource} aria-label="Proposed script source" tabIndex={0}>{preview.draft.source}</pre>
         <p className={styles.status}>{source ? 'Using this draft replaces the source in the editor.' : 'Using this draft fills the empty editor.'}</p>
         <div className={styles.actions}>

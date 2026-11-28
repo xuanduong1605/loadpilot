@@ -106,7 +106,7 @@ class AssistantSuggestions {
     }
 
     Result proposeScript(String operator, String goal, JsonNode schema) {
-        return call(new Job("script", operator, goal), () -> provider.proposeScript(goal, schema));
+        return call(new Job("script", operator, List.of(goal, schema)), () -> provider.proposeScript(goal, schema));
     }
 
     private Result call(Job job, Callable<String> task) {

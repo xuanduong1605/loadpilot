@@ -338,9 +338,60 @@ class AssistantIntegrationTest {
                 .andExpect(jsonPath("$.message", containsString("Continue editing manually")));
     }
 
+    @Test void previewsOrderedReadOnlyChecksOnLocallyEnteredPaths() throws Exception {
+        UUID target = scriptTarget(false);
+        String goal = "HEAD the first path expecting 204, then GET the second expecting 200.";
+        var paths = List.of("/catalog/status", "/catalog/items");
+        when(provider.proposeScript(eq(goal), any())).thenReturn("""
+                {"steps":[{"method":"HEAD","expectedStatus":204},{"method":"GET","expectedStatus":200}]}
+                """);
+        long scripts = db.queryForObject("SELECT count(*) FROM scenario_version", Long.class);
+        var response = mvc.perform(scriptDraft(goal, target, 750, paths)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.steps[0].path").value("/catalog/status"))
+                .andExpect(jsonPath("$.steps[0].method").value("HEAD"))
+                .andExpect(jsonPath("$.steps[1].path").value("/catalog/items"))
+                .andExpect(jsonPath("$.steps[1].expectedStatus").value(200))
+                .andExpect(jsonPath("$.review.policyAccepted").value(true))
+                .andExpect(jsonPath("$.executionReview.policyAccepted").value(true)).andReturn().getResponse();
+        String source = json.readTree(response.getContentAsString()).path("source").asText();
+        assertThat(source).contains(
+                "http.head(\"https://draft-fixture.invalid/catalog/status\", { timeout: 750, redirects: 0 })",
+                "r.status === 204", "http.get(\"https://draft-fixture.invalid/catalog/items\", { timeout: 750, redirects: 0 })", "r.status === 200");
+        assertThat(source.indexOf("http.head")).isLessThan(source.indexOf("http.get"));
+        assertThat(db.queryForObject("SELECT count(*) FROM scenario_version", Long.class)).isEqualTo(scripts);
+        verify(provider).proposeScript(eq(goal), argThat(schema -> schema.at("/properties/steps/maxItems").asInt() == 2
+                && !schema.toString().contains("catalog") && !schema.toString().contains("draft-fixture.invalid")));
+    }
+
+    @Test void rejectsForeignOrAmbiguousPathsAndRequiresACompleteOrderedDraft() throws Exception {
+        UUID target = scriptTarget(false);
+        String goal = "Draft ordered checks.";
+        for (var path : List.of("https://other.invalid/", "//other.invalid/", "/health?private=value", "/health#fragment",
+                "/%2fother.invalid/", "/health/../secret", "/encoded%5cpath")) {
+            mvc.perform(scriptDraft(goal, target, 750, List.of(path))).andExpect(status().isBadRequest());
+        }
+        mvc.perform(scriptDraft(goal, target, 750, List.of("/a", "/b", "/c", "/d", "/e"))).andExpect(status().isBadRequest());
+        verifyNoInteractions(provider);
+        var paths = List.of("/health", "/catalog");
+        when(provider.proposeScript(eq(goal), any())).thenReturn("{\"steps\":[]}", """
+                {"steps":[{"method":"GET","expectedStatus":200}]}
+                """, """
+                {"steps":[{"method":"GET","expectedStatus":200},{"method":"HEAD","expectedStatus":null,"path":"/other"}]}
+                """);
+        mvc.perform(scriptDraft(goal, target, 750, paths)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.source").doesNotExist()).andExpect(jsonPath("$.errors[0]", containsString("each path in order")));
+        mvc.perform(scriptDraft(goal, target, 750, paths)).andExpect(status().isBadGateway());
+        mvc.perform(scriptDraft(goal, target, 750, paths)).andExpect(status().isBadGateway());
+    }
+
     private MockHttpServletRequestBuilder scriptDraft(String goal, UUID target, Number timeout) throws Exception {
+        return scriptDraft(goal, target, timeout, null);
+    }
+
+    private MockHttpServletRequestBuilder scriptDraft(String goal, UUID target, Number timeout, List<String> paths) throws Exception {
         var body = json.createObjectNode().put("goal", goal).put("targetId", target.toString());
         body.set("requestTimeoutMs", json.valueToTree(timeout));
+        if (paths != null) body.set("paths", json.valueToTree(paths));
         return post(SCRIPT_DRAFT).with(csrf()).contentType("application/json").content(json.writeValueAsString(body));
     }
 
