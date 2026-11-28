@@ -19,12 +19,13 @@ export type AnswerLink = { destination: Destination; recordId: string | null; ve
 export type Message = { text: string; task: Task; recordId: string | null; requestId: string; expectedTurns: number };
 export type EvidenceId = 'WHOLE_RUN' | 'PARTIAL_HTTP' | 'COMPARISON_WHOLE_RUN';
 export type SuggestedRunChange = 'CAPTURE_POST_WARMUP_WINDOW' | 'ISOLATE_FAILING_REQUEST' | 'REPEAT_MATCHED_RUN';
-export type ProviderIssue = 'BUSY' | 'TIMEOUT' | 'INVALID_RESPONSE' | 'UNAVAILABLE';
+export type ProviderIssue = 'BUSY' | 'TIMEOUT' | 'REQUEST_REJECTED' | 'INVALID_RESPONSE' | 'UNAVAILABLE';
 
 export function providerIssueMessage(issue?: ProviderIssue) {
   switch (issue) {
     case 'BUSY': return 'Gemini is handling too many requests. Wait a moment and try again.';
     case 'TIMEOUT': return 'Gemini took too long to reply. Try again.';
+    case 'REQUEST_REJECTED': return 'Gemini rejected the request. You can continue without AI suggestions.';
     case 'INVALID_RESPONSE': return 'Gemini returned an unusable response. Try again.';
     default: return 'Gemini is temporarily unavailable. Try again later.';
   }

@@ -14,6 +14,8 @@ import okhttp3.HttpUrl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -90,6 +92,25 @@ class GeminiAssistantProviderTest {
                     .isEqualTo(json.createObjectNode().put("goal", "Use 5 iterations/s."));
             assertThat(wire.has("tools")).isFalse();
         }
+    }
+
+    @Test void distinguishesProviderRequestRejectionFromAnOutage() throws Exception {
+        try (var fixture = new Fixture(); var assistant = fixture.provider()) {
+            fixture.status.set(400);
+            fixture.reply.set("upstream diagnostics with " + KEY);
+            var schema = json.createObjectNode().put("type", "object");
+            assertThatThrownBy(() -> assistant.proposeSettings("Use 5 iterations/s.", schema))
+                    .hasNoCause().hasMessageNotContaining(KEY)
+                    .isInstanceOfSatisfying(AssistantProvider.ProviderFailure.class,
+                            failure -> assertThat(failure.issue()).isEqualTo(AssistantProvider.Issue.REQUEST_REJECTED));
+            assertThat(fixture.calls.get()).isOne();
+        }
+        assertThatThrownBy(() -> AssistantSuggestions.Result.failed(AssistantProvider.Issue.REQUEST_REJECTED)
+                .require("Continue editing manually."))
+                .isInstanceOfSatisfying(ResponseStatusException.class, failure -> {
+                    assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                    assertThat(failure.getReason()).isEqualTo("Gemini rejected the request. Continue editing manually.");
+                });
     }
 
     @Test @Timeout(15) void timesOutWhenTheProviderStallsAfterSendingHeaders() throws Exception {

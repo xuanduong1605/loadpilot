@@ -13,7 +13,7 @@ public interface AssistantProvider {
         }
     }
 
-    enum Issue { BUSY, TIMEOUT, INVALID_RESPONSE, UNAVAILABLE }
+    enum Issue { BUSY, TIMEOUT, REQUEST_REJECTED, INVALID_RESPONSE, UNAVAILABLE }
 
     final class ProviderFailure extends IOException {
         private final Issue issue;

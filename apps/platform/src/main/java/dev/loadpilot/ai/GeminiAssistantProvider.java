@@ -10,8 +10,10 @@ import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.RequestBody;
+import org.slf4j.LoggerFactory;
 
 final class GeminiAssistantProvider implements AssistantProvider, AutoCloseable {
+    private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(GeminiAssistantProvider.class);
     private static final int MAX_RESPONSE_BYTES = 64 * 1024;
     private static final MediaType JSON = MediaType.get("application/json");
     private static final String INSTRUCTIONS = """
@@ -81,7 +83,12 @@ final class GeminiAssistantProvider implements AssistantProvider, AutoCloseable 
                 if (response.isSuccessful()) return response;
                 int status = response.code();
                 response.close();
-                throw new ProviderFailure(status == 429 ? Issue.BUSY : Issue.UNAVAILABLE);
+                LOG.warn("gemini_http_error status={}", status);
+                throw new ProviderFailure(switch (status) {
+                    case 400 -> Issue.REQUEST_REJECTED;
+                    case 429 -> Issue.BUSY;
+                    default -> Issue.UNAVAILABLE;
+                });
             })
             .build();
 

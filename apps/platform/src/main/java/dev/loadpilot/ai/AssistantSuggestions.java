@@ -63,12 +63,13 @@ class AssistantSuggestions {
             var status = switch (issue) {
                 case BUSY -> HttpStatus.TOO_MANY_REQUESTS;
                 case TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
-                case INVALID_RESPONSE -> HttpStatus.BAD_GATEWAY;
+                case REQUEST_REJECTED, INVALID_RESPONSE -> HttpStatus.BAD_GATEWAY;
                 case UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
             };
             var message = switch (issue) {
                 case BUSY -> "Gemini is handling too many requests.";
                 case TIMEOUT -> "Gemini took too long to reply.";
+                case REQUEST_REJECTED -> "Gemini rejected the request.";
                 case INVALID_RESPONSE -> "Gemini returned an unusable response.";
                 case UNAVAILABLE -> "Gemini is currently unavailable.";
             };
