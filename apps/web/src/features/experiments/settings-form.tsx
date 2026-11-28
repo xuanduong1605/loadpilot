@@ -8,7 +8,7 @@ import { api, mutate } from '../../lib/api';
 import type { Target, TargetPage } from '../targets/types';
 import styles from './settings.module.css';
 import { ExperimentReview, type Draft } from './experiment-review';
-import { LoadProfileEditor, encodeProfile, profileValues } from './load-profile';
+import { LoadProfileEditor, encodeProfile, profileValues, type LoadProfile } from './load-profile';
 import { SloPolicyEditor, encodeSlo, sloValues } from './slo-policy';
 import { LoadSummary, SloSummary, SummaryRows } from './experiment-summary';
 import summary from './experiment-summary.module.css';
@@ -43,9 +43,11 @@ const settingsLabels = {
   ...Object.fromEntries([...fields, ...executionFields].map(([key, label]) => [key, label])),
   minimumRate: 'Minimum load (iter/s)',
   maximumRate: 'Maximum load (iter/s)',
+  durationSeconds: 'Run duration (s)',
+  warmupSeconds: 'Warm-up (s)',
   latencyThresholdMs: 'Maximum latency (ms)',
   latencyPercentile: 'Latency percentile',
-  measurementSeconds: 'Measurement window (s)',
+  measurementSeconds: 'Window (s)',
 };
 
 type Review = { valid: boolean; errors: string[]; maximumAttemptSeconds: number; reservedAttemptsPerLoad: number };
@@ -168,11 +170,11 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
 
   function settingsSnapshot(): SettingsSnapshot {
     return { current: readCurrentSettings(), fields: { ...values, ...executionValues, latencyThresholdMs: values.p95LatencyMs,
-      latencyPercentile: slo.latencyPercentile, measurementSeconds: profile.measurementSeconds },
+      latencyPercentile: slo.latencyPercentile, measurementSeconds: profile.measurementSeconds }, profile,
     revision: JSON.stringify([values, executionValues, profile, slo, targetId, scenarioId, scenarioVersion, draft?.revision]) };
   }
 
-  function applySettings(changes: SettingsChange[]) {
+  function applySettings(changes: SettingsChange[], loadProfile?: LoadProfile) {
     const proposed = Object.fromEntries(changes.map(({ field, value }) => [field, String(value)]));
     const selected = (controls: ReadonlyArray<readonly [string, ...unknown[]]>) => Object.fromEntries(controls.flatMap(([key]) => {
       const field = key === 'p95LatencyMs' ? 'latencyThresholdMs' : key;
@@ -180,7 +182,8 @@ export function ExperimentSettingsForm({ onFinalized }: { onFinalized: (id: stri
     }));
     setValues(previous => ({ ...previous, ...selected(fields) }));
     setExecutionValues(previous => ({ ...previous, ...selected(executionFields) }));
-    if (proposed.measurementSeconds) setProfile(previous => ({ ...previous, measurementSeconds: proposed.measurementSeconds }));
+    if (loadProfile) setProfile(profileValues(loadProfile));
+    else if (proposed.measurementSeconds) setProfile(previous => ({ ...previous, measurementSeconds: proposed.measurementSeconds }));
     if (proposed.latencyPercentile) setSlo(previous => ({ ...previous, latencyPercentile: `P${proposed.latencyPercentile}` }));
     setDirty(true); setSaved(false); setReview(undefined); setError('');
   }

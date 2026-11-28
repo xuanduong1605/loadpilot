@@ -38,6 +38,9 @@
 .settingsAssistant { display: grid; gap: 14px; max-width: 72ch; }
 .settingsAssistant textarea { resize: vertical; line-height: 1.55; }
 .settingsAssistant > p { margin: 0; }
+.proposedProfile { display: grid; min-width: 0; gap: 8px; }
+.proposedProfile h3, .proposedProfile p, .proposedProfile ol { margin: 0; }
+.proposedProfile ol { padding-inline-start: 24px; }
 .settingsChanges { width: 100%; border-collapse: collapse; table-layout: fixed; text-align: left; font-family: var(--guide-font); font-size: var(--text-body); }
 .settingsChanges th, .settingsChanges td { padding: 8px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .settingsChanges th { font-weight: 500; }

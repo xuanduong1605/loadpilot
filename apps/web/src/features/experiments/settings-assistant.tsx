@@ -4,7 +4,8 @@ import { useRef, useState } from 'react';
 import { Button, Notice } from '../../components/form-controls';
 import controls from '../../components/form-controls.module.css';
 import { mutate } from '../../lib/api';
-import type { LoadProfile } from './load-profile';
+import type { LoadProfile, ProfileValues } from './load-profile';
+import { ProfilePreview } from './profile-preview';
 import type { SloPolicy } from './slo-policy';
 import summary from './experiment-summary.module.css';
 import styles from './settings.module.css';
@@ -17,8 +18,8 @@ export type EffectiveSettings = {
 };
 
 export type SettingsChange = { field: string; value: number };
-export type SettingsSnapshot = { current: EffectiveSettings | null; fields: Record<string, string>; revision: string };
-type Proposal = { changes: SettingsChange[]; preview: EffectiveSettings | null; errors: string[] };
+export type SettingsSnapshot = { current: EffectiveSettings | null; fields: Record<string, string>; profile: ProfileValues; revision: string };
+type Proposal = { changes: SettingsChange[]; preview: EffectiveSettings | null; errors: string[]; loadProfile?: LoadProfile };
 
 function currentValue(snapshot: SettingsSnapshot, field: string) {
   const value = snapshot.fields[field];
@@ -32,7 +33,7 @@ function displayValue(field: string, value: number | null | undefined) {
 
 export function SettingsAssistant({ read, apply, labels, disabled }: {
   read: () => SettingsSnapshot;
-  apply: (changes: SettingsChange[]) => void;
+  apply: (changes: SettingsChange[], profile?: LoadProfile) => void;
   labels: Readonly<Record<string, string>>;
   disabled: boolean;
 }) {
@@ -40,7 +41,8 @@ export function SettingsAssistant({ read, apply, labels, disabled }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [result, setResult] = useState<{ snapshot: SettingsSnapshot; changes: SettingsChange[]; stageDuration?: number }>();
+  const [result, setResult] = useState<{ snapshot: SettingsSnapshot; changes: SettingsChange[]; stageDuration?: number;
+    loadProfile?: LoadProfile; warmupSeconds?: number }>();
   const disclosure = useRef<HTMLElement>(null);
 
   async function requestPreview() {
@@ -54,13 +56,14 @@ export function SettingsAssistant({ read, apply, labels, disabled }: {
         return;
       }
       const changes = proposal.changes.filter(change => change.value !== currentValue(snapshot, change.field));
-      if (!changes.length) setNotice('The proposed values already match the form.');
+      if (!changes.length && !proposal.loadProfile) setNotice('The proposed values already match the form.');
       else {
         const before = snapshot.current?.loadProfile;
         const after = proposal.preview?.loadProfile;
-        const stageDuration = before?.shape === 'STEADY' && before.stages.length === 1 && after?.stages.length === 1
+        const stageDuration = !proposal.loadProfile && before?.shape === 'STEADY' && before.stages.length === 1 && after?.stages.length === 1
           && before.stages[0].durationSeconds !== after.stages[0].durationSeconds ? after.stages[0].durationSeconds : undefined;
-        setResult({ snapshot, changes, stageDuration });
+        setResult({ snapshot, changes, stageDuration, loadProfile: proposal.loadProfile,
+          warmupSeconds: proposal.changes.find(change => change.field === 'warmupSeconds')?.value });
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'AI settings suggestions are unavailable.');
@@ -76,7 +79,7 @@ export function SettingsAssistant({ read, apply, labels, disabled }: {
       setError('The form changed after this preview. Request a new preview to review the current values.');
       return;
     }
-    apply(result.changes);
+    apply(result.changes, result.loadProfile);
     setResult(undefined);
     setNotice(result.snapshot.current ? 'Changes applied to the form. Review and save the draft when ready.'
       : 'Changes applied to the form. Complete the remaining settings before validating or saving.');
@@ -94,6 +97,10 @@ export function SettingsAssistant({ read, apply, labels, disabled }: {
             event.stopPropagation(); setGoal(event.target.value); setResult(undefined); setError(''); setNotice('');
           }} />
         <span id="settings-goal-hint" className={controls.hint}>Gemini receives your goal text. Keep credentials and private URLs out of it.</span>
+        <details className={summary.disclosure}>
+          <summary>Load profile example</summary>
+          <p>Start at 1 iteration/s. Ramp to 5 iterations/s over 5 seconds, then hold at 5 for 25 seconds. Warm up for 5 seconds and measure for 25 seconds.</p>
+        </details>
       </div>
       <div className={summary.actions}>
         <Button variant="secondary" busy={busy} disabled={disabled || !goal.trim()} onClick={() => void requestPreview()}>
@@ -105,7 +112,16 @@ export function SettingsAssistant({ read, apply, labels, disabled }: {
       {result && <>
         {!result.snapshot.current && <p>Review the proposed values. Complete the remaining settings to validate the full form.</p>}
         {result.stageDuration !== undefined && <p>The steady stage uses the run duration. Both will be {result.stageDuration} seconds.</p>}
-        <table className={styles.settingsChanges} aria-label="Proposed settings">
+        {result.loadProfile && <section className={styles.proposedProfile} aria-label="Proposed load profile">
+          <h3>Proposed {result.loadProfile.shape.toLowerCase()} profile</h3>
+          <p>Single run starting at {result.loadProfile.startRate} iterations/s.</p>
+          {result.snapshot.profile.mode === 'ADAPTIVE_LOAD' && <p>This replaces adaptive trials and their search precision with one fixed profile.</p>}
+          {result.warmupSeconds !== undefined && <ProfilePreview profile={result.loadProfile} warmupSeconds={result.warmupSeconds}
+            durationSeconds={result.loadProfile.stages.reduce((total, stage) => total + stage.durationSeconds, 0)} />}
+          <ol aria-label="Proposed load stages">{result.loadProfile.stages.map((stage, index) =>
+            <li key={index}>{stage.durationSeconds} s to {stage.targetRate} iterations/s</li>)}</ol>
+        </section>}
+        {result.changes.length > 0 && <table className={styles.settingsChanges} aria-label="Proposed settings">
           <thead><tr><th scope="col">Setting</th>
             <th scope="col" aria-label="Current"><span className={styles.fullHeading}>Current</span><span className={styles.shortHeading}>Now</span></th>
             <th scope="col" aria-label="Proposed"><span className={styles.fullHeading}>Proposed</span><span className={styles.shortHeading}>New</span></th>
@@ -115,7 +131,7 @@ export function SettingsAssistant({ read, apply, labels, disabled }: {
             <td>{displayValue(change.field, currentValue(result.snapshot, change.field))}</td>
             <td>{displayValue(change.field, change.value)}</td>
           </tr>)}</tbody>
-        </table>
+        </table>}
         <div className={summary.actions}>
           <Button disabled={disabled} onClick={applyPreview}>Apply to form</Button>
           <Button variant="secondary" onClick={() => { setResult(undefined); disclosure.current?.focus(); }}>Discard preview</Button>

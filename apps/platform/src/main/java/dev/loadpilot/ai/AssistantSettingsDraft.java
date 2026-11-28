@@ -1,5 +1,6 @@
 package dev.loadpilot.ai;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -8,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.loadpilot.experiments.ExperimentSettingsApi;
 import dev.loadpilot.experiments.ExperimentSettingsApi.EffectiveInput;
 import dev.loadpilot.experiments.ExperimentSettingsApi.EffectiveReview;
+import dev.loadpilot.experiments.ExperimentSettingsApi.Settings;
 import dev.loadpilot.experiments.ExecutionBounds;
 import dev.loadpilot.experiments.LoadProfile;
 import dev.loadpilot.experiments.SloPolicy;
@@ -15,10 +17,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.Validator;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.security.Principal;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.security.Principal;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,6 +35,8 @@ class AssistantSettingsDraft {
             "generatorCpuMillicores", "generatorMemoryMiB", "requestTimeoutMs", "startupTimeoutSeconds",
             "gracefulStopSeconds", "maximumAttemptsPerRun");
     private static final List<String> OTHER = List.of("measurementSeconds", "latencyThresholdMs", "latencyPercentile");
+    private static final List<String> PROFILE_FIELDS = List.of("durationSeconds", "warmupSeconds", "measurementSeconds",
+            "precisionIterationsPerSecond");
 
     private final AssistantSuggestions suggestions;
     private final ExperimentSettingsApi settings;
@@ -48,8 +52,10 @@ class AssistantSettingsDraft {
 
     record Input(@NotBlank @Size(max = 2000) String goal, @Valid EffectiveInput current) {}
     record Change(String field, Number value) {}
-    record Proposal(List<Change> changes, EffectiveReview preview, List<String> errors) {}
+    record Proposal(List<Change> changes, EffectiveReview preview, List<String> errors,
+                    @JsonInclude(JsonInclude.Include.NON_NULL) LoadProfile loadProfile) {}
     private record Setting(String section, String property, Class<?> formType) {}
+    private record ProfileDraft(LoadProfile profile, int durationSeconds, int warmupSeconds) {}
 
     @PostMapping("/api/assistant/settings-draft")
     Proposal draft(@Valid @RequestBody Input input, Principal operator) {
@@ -67,7 +73,9 @@ class AssistantSettingsDraft {
             JsonNode root = json.readerFor(JsonNode.class).with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY,
                     DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readValue(result);
             JsonNode entries = root.path("changes");
-            if (!root.isObject() || root.size() != 1 || !entries.isArray() || entries.size() > fieldCount()) throw malformed();
+            JsonNode loadProfile = root.path("profile");
+            if (!root.isObject() || root.size() != (loadProfile.isMissingNode() ? 1 : 2)
+                    || !entries.isArray() || entries.size() > fieldCount()) throw malformed();
             var seen = new HashSet<String>();
             for (JsonNode entry : entries) {
                 String field = entry.path("field").textValue();
@@ -84,26 +92,78 @@ class AssistantSettingsDraft {
                 if (proposed != null) apply(proposed, setting, json.valueToTree(formValue));
                 changes.add(new Change(field, value.numberValue()));
             }
-            if (changes.isEmpty()) return new Proposal(List.of(), null, List.of("Specify the setting, value, and unit to interpret."));
-
-            List<Change> reviewedChanges = List.copyOf(changes);
-            if (!fieldErrors.isEmpty()) return new Proposal(reviewedChanges, null, fieldErrors.stream().sorted().toList());
-            if (proposed == null) return new Proposal(reviewedChanges, null, List.of());
-            var load = input.current().loadProfile();
-            if (seen.contains("durationSeconds") && load.mode() == LoadProfile.Mode.SINGLE_RUN
-                    && load.shape() == LoadProfile.Shape.STEADY && load.stages().size() == 1) {
-                // The form derives the single steady stage from the experiment duration.
-                var stage = (ObjectNode) proposed.path("loadProfile").path("stages").get(0);
-                stage.set("durationSeconds", proposed.path("settings").path("durationSeconds"));
+            ProfileDraft profile = null;
+            if (!loadProfile.isMissingNode()) {
+                if (PROFILE_FIELDS.stream().anyMatch(seen::contains)) throw malformed();
+                profile = readProfile(loadProfile, fieldErrors);
+                if (profile != null) {
+                    var timing = List.of(new Change("durationSeconds", profile.durationSeconds()), new Change("warmupSeconds", profile.warmupSeconds()),
+                            new Change("measurementSeconds", profile.profile().measurementSeconds()));
+                    changes.addAll(timing);
+                    if (proposed == null && fieldErrors.isEmpty()) fieldErrors.addAll(partialProfileErrors(profile, changes));
+                    if (proposed != null) {
+                        for (var change : timing) apply(proposed, setting(change.field()), json.valueToTree(change.value()));
+                        proposed.set("loadProfile", json.valueToTree(profile.profile()));
+                        ((ObjectNode) proposed.path("executionBounds")).putNull("precisionIterationsPerSecond");
+                    }
+                }
             }
+            List<Change> reviewedChanges = List.copyOf(changes);
+            if (!fieldErrors.isEmpty()) return new Proposal(reviewedChanges, null, fieldErrors.stream().sorted().toList(), null);
+            if (changes.isEmpty()) return new Proposal(List.of(), null,
+                    List.of("Specify the setting, value, and unit to interpret. For a load profile, include rates, stage durations, warm-up and measurement length."), null);
+            var profilePreview = profile == null ? null : profile.profile();
+            if (proposed == null) return new Proposal(reviewedChanges, null, List.of(), profilePreview);
+            if (profile == null && seen.contains("durationSeconds")) updateSteadyDuration(proposed, input.current().loadProfile());
             EffectiveInput candidate = json.treeToValue(proposed, EffectiveInput.class);
             var violations = validator.validate(candidate).stream()
                     .map(error -> error.getPropertyPath() + " " + error.getMessage()).sorted().toList();
-            if (!violations.isEmpty()) return new Proposal(reviewedChanges, null, violations);
+            if (!violations.isEmpty()) return new Proposal(reviewedChanges, null, violations, null);
             EffectiveReview review = settings.validateEffective(candidate);
-            return new Proposal(reviewedChanges, review.valid() ? review : null, review.errors());
+            return new Proposal(reviewedChanges, review.valid() ? review : null, review.errors(), review.valid() ? profilePreview : null);
         } catch (JsonProcessingException invalid) {
             throw malformed();
+        }
+    }
+
+    private ProfileDraft readProfile(JsonNode node, List<String> errors) throws JsonProcessingException {
+        if (!(node instanceof ObjectNode input) || input.size() != 5 || !input.path("shape").isTextual()
+                || !input.path("startRate").isIntegralNumber() || !input.path("measurementSeconds").isIntegralNumber()
+                || !input.path("warmupSeconds").isIntegralNumber() || !input.path("warmupSeconds").canConvertToInt()
+                || !input.path("stages").isArray() || input.path("stages").isEmpty() || input.path("stages").size() > 12) throw malformed();
+        for (var stage : input.path("stages")) {
+            if (!stage.isObject() || stage.size() != 2 || !stage.path("durationSeconds").isIntegralNumber()
+                    || !stage.path("targetRate").isIntegralNumber()) throw malformed();
+        }
+        var profileNode = input.deepCopy();
+        int warmup = profileNode.remove("warmupSeconds").intValue();
+        profileNode.put("mode", "SINGLE_RUN");
+        var profile = json.treeToValue(profileNode, LoadProfile.class);
+        var violations = validator.validate(profile);
+        violations.forEach(error -> errors.add("loadProfile." + error.getPropertyPath() + " " + error.getMessage()));
+        if (!violations.isEmpty()) return null;
+        int duration = profile.stages().stream().mapToInt(LoadProfile.Stage::durationSeconds).sum();
+        if (duration > 3600) errors.add("The load stages must fit within a 3600-second run.");
+        if (warmup < 0 || warmup >= duration) errors.add("Warm-up must be nonnegative and shorter than the run duration.");
+        if (duration > 3600 || warmup < 0 || warmup >= duration) return null;
+        return new ProfileDraft(profile, duration, warmup);
+    }
+
+    private static List<String> partialProfileErrors(ProfileDraft draft, List<Change> changes) {
+        int minimum = changes.stream().filter(change -> change.field().equals("minimumRate")).findFirst()
+                .map(change -> change.value().intValue()).orElse(1);
+        int maximum = changes.stream().filter(change -> change.field().equals("maximumRate")).findFirst()
+                .map(change -> change.value().intValue()).orElse(10000);
+        if (minimum > maximum) return List.of("Minimum rate must not exceed maximum rate.");
+        var bounds = new Settings(minimum, maximum, draft.durationSeconds(), draft.warmupSeconds(), null, null, null, null, null);
+        return draft.profile().errors(bounds);
+    }
+
+    private static void updateSteadyDuration(ObjectNode proposed, LoadProfile load) {
+        if (load.mode() == LoadProfile.Mode.SINGLE_RUN && load.shape() == LoadProfile.Shape.STEADY && load.stages().size() == 1) {
+            // The form derives the single steady stage from the experiment duration.
+            var stage = (ObjectNode) proposed.path("loadProfile").path("stages").get(0);
+            stage.set("durationSeconds", proposed.path("settings").path("durationSeconds"));
         }
     }
 
@@ -137,15 +197,34 @@ class AssistantSettingsDraft {
     private ObjectNode schema() {
         var schema = json.createObjectNode().put("type", "object").put("additionalProperties", false);
         schema.putArray("required").add("changes");
-        var changes = schema.putObject("properties").putObject("changes").put("type", "array").put("maxItems", fieldCount());
+        var fields = schema.putObject("properties");
+        var changes = fields.putObject("changes").put("type", "array").put("maxItems", fieldCount());
         var item = changes.putObject("items").put("type", "object").put("additionalProperties", false);
         item.putArray("required").add("field").add("value");
         var properties = item.putObject("properties");
         var names = properties.putObject("field").put("type", "string").putArray("enum");
-        for (var fields : List.of(SETTINGS, BOUNDS, OTHER)) fields.forEach(names::add);
+        for (var allowed : List.of(SETTINGS, BOUNDS, OTHER)) allowed.forEach(names::add);
         properties.putObject("value").put("type", "number").put("description", "Rates and precision are iterations/s. "
                 + "Time fields use their stated units. Error ratio is 0 to 1. maximumRuns counts attempts, including retries.");
+        var profile = fields.putObject("profile").put("type", "object").put("additionalProperties", false);
+        profile.putArray("required").add("shape").add("startRate").add("warmupSeconds").add("measurementSeconds").add("stages");
+        var profileFields = profile.putObject("properties");
+        var shapes = profileFields.putObject("shape").put("type", "string").putArray("enum");
+        for (var shape : LoadProfile.Shape.values()) shapes.add(shape.name());
+        integerField(profileFields, "startRate", 0, 10000);
+        integerField(profileFields, "warmupSeconds", 0, 3599);
+        integerField(profileFields, "measurementSeconds", 1, 3600);
+        var stage = profileFields.putObject("stages").put("type", "array").put("minItems", 1).put("maxItems", 12)
+                .putObject("items").put("type", "object").put("additionalProperties", false);
+        stage.putArray("required").add("durationSeconds").add("targetRate");
+        var stageFields = stage.putObject("properties");
+        integerField(stageFields, "durationSeconds", 1, 3600);
+        integerField(stageFields, "targetRate", 0, 10000);
         return schema;
+    }
+
+    private static void integerField(ObjectNode parent, String name, int minimum, int maximum) {
+        parent.putObject(name).put("type", "integer").put("minimum", minimum).put("maximum", maximum);
     }
 
     private static int fieldCount() {

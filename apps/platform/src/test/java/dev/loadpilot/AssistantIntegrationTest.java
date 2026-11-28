@@ -221,6 +221,51 @@ class AssistantIntegrationTest {
                 .andExpect(jsonPath("$.preview.loadProfile.measurementSeconds").value(25));
     }
 
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "STEADY|5|30|[{\"durationSeconds\":30,\"targetRate\":5}]",
+            "RAMP|1|30|[{\"durationSeconds\":5,\"targetRate\":5},{\"durationSeconds\":25,\"targetRate\":5}]",
+            "SPIKE|1|35|[{\"durationSeconds\":5,\"targetRate\":5},{\"durationSeconds\":25,\"targetRate\":5},{\"durationSeconds\":5,\"targetRate\":1}]"
+    })
+    void draftsExplicitLoadProfilesForBlankAndCompleteForms(String shape, int start, int duration, String stages) throws Exception {
+        String goal = "Draft the specified " + shape + " profile.";
+        var output = json.createObjectNode();
+        output.putArray("changes");
+        output.putObject("profile").put("shape", shape).put("startRate", start).put("warmupSeconds", 5)
+                .put("measurementSeconds", 25).set("stages", json.readTree(stages));
+        when(provider.proposeSettings(eq(goal), any())).thenReturn(output.toString());
+        mvc.perform(settingsDraft(json.createObjectNode().put("goal", goal))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors.length()").value(0)).andExpect(jsonPath("$.preview").doesNotExist())
+                .andExpect(jsonPath("$.loadProfile.mode").value("SINGLE_RUN")).andExpect(jsonPath("$.loadProfile.shape").value(shape))
+                .andExpect(jsonPath("$.loadProfile.startRate").value(start))
+                .andExpect(jsonPath("$.changes[0].field").value("durationSeconds"))
+                .andExpect(jsonPath("$.changes[0].value").value(duration));
+        mvc.perform(settingsDraft(goal)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.preview.valid").value(true))
+                .andExpect(jsonPath("$.preview.settings.durationSeconds").value(duration))
+                .andExpect(jsonPath("$.preview.settings.maximumRate").value(10))
+                .andExpect(jsonPath("$.preview.executionBounds.precisionIterationsPerSecond").doesNotExist())
+                .andExpect(jsonPath("$.preview.loadProfile.shape").value(shape))
+                .andExpect(jsonPath("$.preview.loadProfile.measurementSeconds").value(25));
+    }
+
+    @Test void refusesLoadProfilesWithMisalignedMeasurementOrContradictoryTiming() throws Exception {
+        String goal = "Plan a ramp.";
+        String response = """
+                {"changes":[],"profile":{"shape":"RAMP","startRate":1,"warmupSeconds":1,"measurementSeconds":25,
+                "stages":[{"durationSeconds":5,"targetRate":5},{"durationSeconds":25,"targetRate":5}]}}
+                """;
+        when(provider.proposeSettings(eq(goal), any())).thenReturn(response,
+                response.replace("\"changes\":[]", "\"changes\":[{\"field\":\"durationSeconds\",\"value\":40}]"),
+                response.replace("\"targetRate\":5", "\"targetRate\":5.5"));
+        var blank = json.createObjectNode().put("goal", goal);
+        mvc.perform(settingsDraft(blank)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors[0]", containsString("constant positive peak-rate plateau")))
+                .andExpect(jsonPath("$.loadProfile").doesNotExist());
+        mvc.perform(settingsDraft(blank)).andExpect(status().isBadGateway());
+        mvc.perform(settingsDraft(blank)).andExpect(status().isBadGateway());
+    }
+
     @Test void proposesOnlyMentionedFieldsWithoutACompletedSettingsForm() throws Exception {
         long turnsBefore = db.queryForObject("SELECT count(*) FROM assistant_turn", Long.class);
         String goal = "Use at most 20 iterations/s and a 2% error ratio.";
