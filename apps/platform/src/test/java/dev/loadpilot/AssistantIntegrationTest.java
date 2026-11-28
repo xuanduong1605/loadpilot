@@ -2,6 +2,7 @@ package dev.loadpilot;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import dev.loadpilot.ai.AssistantApi.AnalysisRequest;
 import dev.loadpilot.ai.AssistantApi.Message;
 import dev.loadpilot.ai.AssistantApi.Task;
@@ -264,6 +265,37 @@ class AssistantIntegrationTest {
                 .andExpect(jsonPath("$.loadProfile").doesNotExist());
         mvc.perform(settingsDraft(blank)).andExpect(status().isBadGateway());
         mvc.perform(settingsDraft(blank)).andExpect(status().isBadGateway());
+    }
+
+    @Test void keepsProfileBoundsInThePlatformWhenTheProviderSchemaOnlyDefinesTypes() throws Exception {
+        String goal = "Plan a ramp with the specified rates and timing.";
+        String response = """
+                {"changes":[],"profile":{"shape":"RAMP","startRate":1,"warmupSeconds":5,"measurementSeconds":25,
+                "stages":[{"durationSeconds":5,"targetRate":5},{"durationSeconds":25,"targetRate":5}]}}
+                """;
+        JsonNode empty = json.readTree(response);
+        ((ArrayNode) empty.at("/profile/stages")).removeAll();
+        JsonNode oversized = json.readTree(response);
+        var stages = (ArrayNode) oversized.at("/profile/stages");
+        while (stages.size() < 13) stages.add(stages.get(1));
+        when(provider.proposeSettings(eq(goal), any())).thenReturn(response, empty.toString(), oversized.toString(),
+                response.replace("\"durationSeconds\":5", "\"durationSeconds\":0"),
+                response.replace("\"targetRate\":5", "\"targetRate\":10001"));
+        var input = json.createObjectNode().put("goal", goal);
+        mvc.perform(settingsDraft(input)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.loadProfile.shape").value("RAMP"));
+        mvc.perform(settingsDraft(input)).andExpect(status().isBadGateway());
+        mvc.perform(settingsDraft(input)).andExpect(status().isBadGateway());
+        mvc.perform(settingsDraft(input)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors[0]", containsString("durationSeconds")))
+                .andExpect(jsonPath("$.loadProfile").doesNotExist());
+        mvc.perform(settingsDraft(input)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors[0]", containsString("targetRate")))
+                .andExpect(jsonPath("$.loadProfile").doesNotExist());
+        verify(provider, times(5)).proposeSettings(eq(goal), argThat(schema -> schema.findValues("maximum").isEmpty()
+                && schema.findValues("minimum").isEmpty() && schema.findValues("minItems").isEmpty()
+                && schema.findValues("maxItems").isEmpty()
+                && schema.at("/properties/profile/properties/stages/items/properties/targetRate/type").asText().equals("integer")));
     }
 
     @Test void proposesOnlyMentionedFieldsWithoutACompletedSettingsForm() throws Exception {

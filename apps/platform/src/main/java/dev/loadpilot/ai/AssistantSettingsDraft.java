@@ -198,7 +198,8 @@ class AssistantSettingsDraft {
         var schema = json.createObjectNode().put("type", "object").put("additionalProperties", false);
         schema.putArray("required").add("changes");
         var fields = schema.putObject("properties");
-        var changes = fields.putObject("changes").put("type", "array").put("maxItems", fieldCount());
+        // Keep Gemini's output grammar small. The parser and experiment validators enforce the business bounds.
+        var changes = fields.putObject("changes").put("type", "array");
         var item = changes.putObject("items").put("type", "object").put("additionalProperties", false);
         item.putArray("required").add("field").add("value");
         var properties = item.putObject("properties");
@@ -211,20 +212,16 @@ class AssistantSettingsDraft {
         var profileFields = profile.putObject("properties");
         var shapes = profileFields.putObject("shape").put("type", "string").putArray("enum");
         for (var shape : LoadProfile.Shape.values()) shapes.add(shape.name());
-        integerField(profileFields, "startRate", 0, 10000);
-        integerField(profileFields, "warmupSeconds", 0, 3599);
-        integerField(profileFields, "measurementSeconds", 1, 3600);
-        var stage = profileFields.putObject("stages").put("type", "array").put("minItems", 1).put("maxItems", 12)
+        profileFields.putObject("startRate").put("type", "integer");
+        profileFields.putObject("warmupSeconds").put("type", "integer");
+        profileFields.putObject("measurementSeconds").put("type", "integer");
+        var stage = profileFields.putObject("stages").put("type", "array")
                 .putObject("items").put("type", "object").put("additionalProperties", false);
         stage.putArray("required").add("durationSeconds").add("targetRate");
         var stageFields = stage.putObject("properties");
-        integerField(stageFields, "durationSeconds", 1, 3600);
-        integerField(stageFields, "targetRate", 0, 10000);
+        stageFields.putObject("durationSeconds").put("type", "integer");
+        stageFields.putObject("targetRate").put("type", "integer");
         return schema;
-    }
-
-    private static void integerField(ObjectNode parent, String name, int minimum, int maximum) {
-        parent.putObject(name).put("type", "integer").put("minimum", minimum).put("maximum", maximum);
     }
 
     private static int fieldCount() {
