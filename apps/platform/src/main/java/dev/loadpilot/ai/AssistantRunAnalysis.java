@@ -26,10 +26,22 @@ class AssistantRunAnalysis {
     private static final Pattern RESOURCE_TUNING = Pattern.compile("(?iu)\\b(?:cpus?|vcpus?|replicas?|mCPU|millicores?)\\b");
     enum Status { READY, INSUFFICIENT_DATA, PROVIDER_UNAVAILABLE }
     enum EvidenceId { WHOLE_RUN, PARTIAL_HTTP, COMPARISON_WHOLE_RUN }
+    enum SuggestedChange {
+        CAPTURE_POST_WARMUP_WINDOW, ISOLATE_FAILING_REQUEST, REPEAT_MATCHED_RUN;
+
+        boolean supportedBy(List<Observation> cited, boolean comparing) {
+            return switch (this) {
+                case CAPTURE_POST_WARMUP_WINDOW -> !cited.isEmpty();
+                case ISOLATE_FAILING_REQUEST -> cited.stream().anyMatch(observation -> observation.httpFailureRatio() > 0);
+                case REPEAT_MATCHED_RUN -> comparing && cited.size() == 2;
+            };
+        }
+    }
 
     record Observation(EvidenceId id, Instant from, Instant until, long httpRequests, double p95LatencyMs,
                        double httpFailureRatio, Double httpRequestsPerSecond) {}
-    record Finding(String hypothesis, String suggestedCheck, List<EvidenceId> evidenceIds) {}
+    record Finding(String hypothesis, String suggestedCheck, List<EvidenceId> evidenceIds,
+                   @JsonInclude(JsonInclude.Include.NON_NULL) SuggestedChange suggestedChange) {}
     record Comparison(UUID runId, String runStatus, String verdict, int requestedIterationsPerSecond) {}
     record Report(Status status, String runStatus, String verdict, List<Observation> observations, List<Finding> findings,
                   @JsonInclude(JsonInclude.Include.NON_NULL) Comparison comparison,
@@ -83,12 +95,11 @@ class AssistantRunAnalysis {
 
     private Report askProvider(String operator, RunResults.View view, List<Observation> observations, Comparison comparison) {
         var evidence = evidence(observations, comparison);
-        var allowedIds = observations.stream().map(Observation::id).toList();
-        var reply = suggestions.analyzeRun(operator, evidence, schema(allowedIds, comparison != null));
+        var reply = suggestions.analyzeRun(operator, evidence, schema(observations, comparison != null));
         Issue issue = reply.issue();
         if (issue == null) {
             try {
-                return report(Status.READY, view, observations, findings(reply.text(), allowedIds, comparison != null), comparison);
+                return report(Status.READY, view, observations, findings(reply.text(), observations, comparison != null), comparison);
             } catch (JsonProcessingException | IllegalArgumentException invalid) {
                 // Provider output is untrusted. Preserve the saved observations without its findings.
                 issue = Issue.INVALID_RESPONSE;
@@ -165,7 +176,8 @@ class AssistantRunAnalysis {
         return nonnegative(value) && value <= 1;
     }
 
-    private List<Finding> findings(String reply, List<EvidenceId> allowedIds, boolean comparing) throws JsonProcessingException {
+    private List<Finding> findings(String reply, List<Observation> observations, boolean comparing) throws JsonProcessingException {
+        var allowedIds = observations.stream().map(Observation::id).toList();
         JsonNode root = json.readerFor(JsonNode.class).with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY,
                 DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readValue(reply);
         var entries = root.path("findings");
@@ -173,7 +185,9 @@ class AssistantRunAnalysis {
         var findings = new ArrayList<Finding>();
         for (var entry : entries) {
             var ids = entry.path("evidenceIds");
-            if (!entry.isObject() || entry.size() != 3 || !ids.isArray() || ids.isEmpty() || ids.size() > allowedIds.size()
+            var proposal = entry.path("suggestedChange");
+            int expectedFields = proposal.isMissingNode() ? 3 : 4;
+            if (!entry.isObject() || entry.size() != expectedFields || !ids.isArray() || ids.isEmpty() || ids.size() > allowedIds.size()
                     || (comparing && ids.size() != allowedIds.size())) throw invalid();
             var citations = new ArrayList<EvidenceId>();
             for (var value : ids) {
@@ -182,7 +196,14 @@ class AssistantRunAnalysis {
                 if (!allowedIds.contains(id) || citations.contains(id)) throw invalid();
                 citations.add(id);
             }
-            findings.add(new Finding(text(entry.path("hypothesis")), text(entry.path("suggestedCheck")), List.copyOf(citations)));
+            SuggestedChange change = null;
+            if (!proposal.isMissingNode()) {
+                if (!proposal.isTextual()) throw invalid();
+                var selected = SuggestedChange.valueOf(proposal.textValue());
+                var cited = observations.stream().filter(observation -> citations.contains(observation.id())).toList();
+                if (selected.supportedBy(cited, comparing)) change = selected;
+            }
+            findings.add(new Finding(text(entry.path("hypothesis")), text(entry.path("suggestedCheck")), List.copyOf(citations), change));
         }
         return List.copyOf(findings);
     }
@@ -194,7 +215,7 @@ class AssistantRunAnalysis {
         return value;
     }
 
-    private ObjectNode schema(List<EvidenceId> allowedIds, boolean comparing) {
+    private ObjectNode schema(List<Observation> observations, boolean comparing) {
         var schema = json.createObjectNode().put("type", "object").put("additionalProperties", false);
         schema.putArray("required").add("findings");
         var items = schema.putObject("properties").putObject("findings").put("type", "array").put("maxItems", 3)
@@ -203,10 +224,12 @@ class AssistantRunAnalysis {
         var contents = items.putObject("properties");
         contents.putObject("hypothesis").put("type", "string");
         contents.putObject("suggestedCheck").put("type", "string");
-        var citations = contents.putObject("evidenceIds").put("type", "array").put("minItems", comparing ? allowedIds.size() : 1)
-                .put("maxItems", allowedIds.size())
+        var citations = contents.putObject("evidenceIds").put("type", "array").put("minItems", comparing ? observations.size() : 1)
+                .put("maxItems", observations.size())
                 .putObject("items").put("type", "string").putArray("enum");
-        allowedIds.forEach(id -> citations.add(id.name()));
+        observations.forEach(observation -> citations.add(observation.id().name()));
+        var changes = contents.putObject("suggestedChange").put("type", "string").putArray("enum");
+        for (var change : SuggestedChange.values()) if (change.supportedBy(observations, comparing)) changes.add(change.name());
         return schema;
     }
 

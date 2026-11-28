@@ -1,8 +1,13 @@
-import { providerIssueMessage, type EvidenceId, type RunAnalysis } from './assistant-data';
+import { providerIssueMessage, type EvidenceId, type RunAnalysis, type SuggestedRunChange } from './assistant-data';
 import styles from './assistant.module.css';
 
 const evidenceLabel = { WHOLE_RUN: 'Whole-run k6 summary', PARTIAL_HTTP: 'Partial HTTP window',
   COMPARISON_WHOLE_RUN: 'Comparison whole-run summary' } satisfies Record<EvidenceId, string>;
+const changeDescription = {
+  CAPTURE_POST_WARMUP_WINDOW: 'Plan a stable phase after warm-up and collect its full measurement window.',
+  ISOLATE_FAILING_REQUEST: 'If you can identify a failing request, isolate it in a separate diagnostic script for review.',
+  REPEAT_MATCHED_RUN: 'Prepare a repeat with the same approved inputs. Record achieved load and the full measurement window.',
+} satisfies Record<SuggestedRunChange, string>;
 const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
 const percent = new Intl.NumberFormat(undefined, { style: 'percent', maximumFractionDigits: 2 });
 const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'medium' });
@@ -44,6 +49,7 @@ export function AssistantRunReport({ id, report, onAsk, disabled }: { id: string
       {report.findings.length ? <ul className={styles.runFindings}>{report.findings.map((finding, index) => <li key={index}>
         <p><strong>Hypothesis</strong> {finding.hypothesis}</p>
         <p><strong>Suggested check</strong> {finding.suggestedCheck}</p>
+        {finding.suggestedChange && <p><strong>Suggested change</strong> {changeDescription[finding.suggestedChange]}</p>}
         <ul className={styles.links} aria-label="Cited observations">{finding.evidenceIds.map(scope =>
           <li key={scope}><a href={`#${evidenceAnchor(scope)}`}>{scopeLabel(scope)}</a></li>)}</ul>
       </li>)}</ul> : <p>The saved evidence did not support a specific hypothesis.</p>}

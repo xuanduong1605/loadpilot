@@ -419,7 +419,7 @@ class AssistantIntegrationTest {
         when(provider.analyzeRun(any(), any())).thenReturn("""
                 {"findings":[{"hypothesis":"The partial window may reflect a transient delay.",
                 "suggestedCheck":"Check whether the latency increase repeats in a comparable measurement window.",
-                "evidenceIds":["PARTIAL_HTTP"]}]}
+                "evidenceIds":["PARTIAL_HTTP"],"suggestedChange":"CAPTURE_POST_WARMUP_WINDOW"}]}
                 """);
         mvc.perform(analyze(id, request, run)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.turn.reply.analysis.status").value("READY"))
@@ -430,10 +430,12 @@ class AssistantIntegrationTest {
         mvc.perform(analyze(id, request, run)).andExpect(status().isOk());
         mvc.perform(get(CHATS + "/" + id)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.turns[0].reply.analysis.observations[0].from").value("2026-11-15T00:00:00Z"))
-                .andExpect(jsonPath("$.turns[0].reply.analysis.findings[0].suggestedCheck", containsString("comparable measurement window")));
+                .andExpect(jsonPath("$.turns[0].reply.analysis.findings[0].suggestedCheck", containsString("comparable measurement window")))
+                .andExpect(jsonPath("$.turns[0].reply.analysis.findings[0].suggestedChange").value("CAPTURE_POST_WARMUP_WINDOW"));
         verify(provider).analyzeRun(argThat(evidence -> evidence.at("/observations/0/httpRequests").asInt() == 40
                         && !evidence.toString().contains(run.toString()) && !evidence.toString().contains("internal-")),
-                argThat(schema -> schema.toString().contains("PARTIAL_HTTP") && !schema.toString().contains("WHOLE_RUN")));
+                argThat(schema -> schema.toString().contains("PARTIAL_HTTP") && !schema.toString().contains("WHOLE_RUN")
+                        && !schema.toString().contains("ISOLATE_FAILING_REQUEST")));
         assertThat(db.queryForObject("SELECT status FROM experiment_run WHERE id = ?", String.class, run)).isEqualTo("COMPLETED");
         addOtherOperator();
         mvc.perform(analyze(UUID.randomUUID(), UUID.randomUUID(), run).with(user("other-operator").roles("OPERATOR")))
@@ -475,6 +477,29 @@ class AssistantIntegrationTest {
                         && !evidence.toString().contains("internal-") && !evidence.toString().contains("2026-11")), any());
     }
 
+    @Test void checksSuggestedChangesAgainstCitedObservationsAndRejectsUnsupportedCodes() throws Exception {
+        UUID run = completedRun();
+        doReturn(viewWithWhole(run, 210.0)).when(runResults).read(run);
+        when(provider.analyzeRun(any(), any())).thenReturn("""
+                {"findings":[
+                {"hypothesis":"The sample may precede the failures.","suggestedCheck":"Inspect its timing.",
+                "evidenceIds":["PARTIAL_HTTP"],"suggestedChange":"ISOLATE_FAILING_REQUEST"},
+                {"hypothesis":"Some requests may fail outside the sample.","suggestedCheck":"Group the recorded failures by response status.",
+                "evidenceIds":["WHOLE_RUN"],"suggestedChange":"ISOLATE_FAILING_REQUEST"}]}
+                """, """
+                {"findings":[{"hypothesis":"The run has historical observations.","suggestedCheck":"Review the results.",
+                "evidenceIds":["WHOLE_RUN"],"suggestedChange":"RAISE_MAXIMUM_RATE"}]}
+                """);
+        mvc.perform(analyze(UUID.randomUUID(), UUID.randomUUID(), run)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.turn.reply.analysis.status").value("READY"))
+                .andExpect(jsonPath("$.turn.reply.analysis.findings[0].suggestedChange").doesNotExist())
+                .andExpect(jsonPath("$.turn.reply.analysis.findings[1].suggestedChange").value("ISOLATE_FAILING_REQUEST"));
+        mvc.perform(analyze(UUID.randomUUID(), UUID.randomUUID(), run)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.turn.reply.analysis.providerIssue").value("INVALID_RESPONSE"))
+                .andExpect(jsonPath("$.turn.reply.analysis.observations.length()").value(2))
+                .andExpect(jsonPath("$.turn.reply.analysis.verdict").value("UNEVALUATED"));
+    }
+
     @Test void comparesCompatibleRunsWithPairedCitationsAndReplaysOnlyTheSamePair() throws Exception {
         UUID baseline = completedRun(), comparison = completedRun(targetId(baseline)), chat = UUID.randomUUID(), request = UUID.randomUUID();
         stubComparisonInputs(baseline, 5);
@@ -484,7 +509,7 @@ class AssistantIntegrationTest {
         when(provider.analyzeRun(any(), any())).thenReturn("""
                 {"findings":[{"hypothesis":"The whole-run difference may reflect variability.",
                 "suggestedCheck":"Compare equivalent measurement windows with achieved load recorded.",
-                "evidenceIds":["WHOLE_RUN","COMPARISON_WHOLE_RUN"]}]}
+                "evidenceIds":["WHOLE_RUN","COMPARISON_WHOLE_RUN"],"suggestedChange":"REPEAT_MATCHED_RUN"}]}
                 """);
         mvc.perform(analyze(chat, request, baseline, comparison)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.turn.reply.analysis.comparison.runId").value(comparison.toString()))
@@ -494,7 +519,8 @@ class AssistantIntegrationTest {
         mvc.perform(analyze(chat, request, baseline, comparison)).andExpect(status().isOk());
         mvc.perform(analyze(chat, request, baseline, UUID.randomUUID())).andExpect(status().isConflict());
         mvc.perform(get(CHATS + "/" + chat)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.turns[0].reply.analysis.findings[0].evidenceIds[1]").value("COMPARISON_WHOLE_RUN"));
+                .andExpect(jsonPath("$.turns[0].reply.analysis.findings[0].evidenceIds[1]").value("COMPARISON_WHOLE_RUN"))
+                .andExpect(jsonPath("$.turns[0].reply.analysis.findings[0].suggestedChange").value("REPEAT_MATCHED_RUN"));
         verify(provider).analyzeRun(argThat(evidence -> evidence.path("requestedIterationsPerSecond").asInt() == 5
                 && evidence.path("observations").size() == 2 && !evidence.toString().contains(comparison.toString())), any());
     }

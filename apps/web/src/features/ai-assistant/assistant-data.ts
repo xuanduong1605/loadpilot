@@ -18,6 +18,7 @@ type Destination = 'SYSTEMS' | 'SCRIPTS' | 'SCRIPT_EDITOR' | 'RUNS' | 'RUN_MONIT
 export type AnswerLink = { destination: Destination; recordId: string | null; version: number | null; label: string };
 export type Message = { text: string; task: Task; recordId: string | null; requestId: string; expectedTurns: number };
 export type EvidenceId = 'WHOLE_RUN' | 'PARTIAL_HTTP' | 'COMPARISON_WHOLE_RUN';
+export type SuggestedRunChange = 'CAPTURE_POST_WARMUP_WINDOW' | 'ISOLATE_FAILING_REQUEST' | 'REPEAT_MATCHED_RUN';
 export type ProviderIssue = 'BUSY' | 'TIMEOUT' | 'INVALID_RESPONSE' | 'UNAVAILABLE';
 
 export function providerIssueMessage(issue?: ProviderIssue) {
@@ -37,7 +38,7 @@ export type RunAnalysis = {
   comparison?: { runId: string; runStatus: string; verdict: string; requestedIterationsPerSecond: number };
   observations: { id: EvidenceId; from: string; until: string; httpRequests: number; p95LatencyMs: number;
     httpFailureRatio: number; httpRequestsPerSecond: number | null }[];
-  findings: { hypothesis: string; suggestedCheck: string; evidenceIds: EvidenceId[] }[];
+  findings: { hypothesis: string; suggestedCheck: string; evidenceIds: EvidenceId[]; suggestedChange?: SuggestedRunChange }[];
 };
 export type Turn = Omit<Message, 'expectedTurns'> & {
   number: number;
